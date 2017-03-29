@@ -1,0 +1,4848 @@
+/*
+ * Copyright (c) 2015-2016 Cisco and/or its affiliates.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/** \file
+
+    This file defines vpe control-plane API messages which are generally
+    called through a shared memory interface. 
+*/
+
+/* 
+ * Note: API placement cleanup in progress
+ * If you're looking for interface APIs, please
+ * see .../vnet/vnet/{interface.api,interface_api.c}
+ * IP APIs: see .../vnet/vnet/ip/{ip.api, ip_api.c}
+ * TAP APIs: see .../vnet/vnet/unix/{tap.api, tap_api.c}
+ */
+
+/** \brief Create a new subinterface with the given vlan id
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - software index of the new vlan's parent interface
+    @param vlan_id - vlan tag of the new interface
+*/
+define create_vlan_subif
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u32 vlan_id;
+};
+
+/** \brief Reply for the vlan subinterface create request
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+    @param sw_if_index - software index allocated for the new subinterface
+*/
+define create_vlan_subif_reply
+{
+  u32 context;
+  i32 retval;
+  u32 sw_if_index;
+};
+
+/** \brief Enable or Disable MPLS on and interface
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - index of the interface
+    @param enable - if non-zero enable, else disable
+*/
+define sw_interface_set_mpls_enable
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u8 enable;
+};
+
+/** \brief Reply for MPLS state on an interface
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define sw_interface_set_mpls_enable_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief MPLS Route Add / del route
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param mr_label - The MPLS label value
+    @param mr_eos - The End of stack bit
+    @param mr_table_id - The MPLS table-id the route is added in
+    @param mr_classify_table_index - If this is a classify route, 
+                                     this is the classify table index
+    @param  mr_create_table_if_needed - If the MPLS or IP tables do not exist,
+                                        create them
+    @param mr_is_add - Is this a route add or delete
+    @param mr_is_classify - Is this route result a classify
+    @param mr_is_multipath - Is this route update a multipath - i.e. is this
+                             a path addition to an existing route
+    @param mr_is_resolve_host - Recurse resolution constraint via a host prefix
+    @param mr_is_resolve_attached - Recurse resolution constraint via attached prefix
+    @param mr_next_hop_proto_is_ip4 - The next-hop is IPV4
+    @param mr_next_hop_weight - The weight, for UCMP
+    @param mr_next_hop[16] - the nextop address
+    @param mr_next_hop_sw_if_index - the next-hop SW interface
+    @param mr_next_hop_table_id - the next-hop table-id (if appropriate)
+    @param mr_next_hop_n_out_labels - the number of labels in the label stack
+    @param mr_next_hop_out_label_stack - the next-hop output label stack, outer most first
+    @param next_hop_via_label - The next-hop is a resolved via a local label
+*/
+define mpls_route_add_del
+{
+  u32 client_index;
+  u32 context;
+  u32 mr_label;
+  u8 mr_eos;
+  u32 mr_table_id;
+  u32 mr_classify_table_index;
+  u8 mr_create_table_if_needed;
+  u8 mr_is_add;
+  u8 mr_is_classify;
+  u8 mr_is_multipath;
+  u8 mr_is_resolve_host;
+  u8 mr_is_resolve_attached;
+  u8 mr_next_hop_proto_is_ip4;
+  u8 mr_next_hop_weight;
+  u8 mr_next_hop[16];
+  u8 mr_next_hop_n_out_labels;
+  u32 mr_next_hop_sw_if_index;
+  u32 mr_next_hop_table_id;
+  u32 mr_next_hop_via_label;
+  u32 mr_next_hop_out_label_stack[mr_next_hop_n_out_labels];
+};
+
+/** \brief Reply for MPLS route add / del request
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define mpls_route_add_del_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Dump MPLS fib table
+    @param client_index - opaque cookie to identify the sender
+*/
+define mpls_fib_dump
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief FIB path
+    @param sw_if_index - index of the interface
+    @param weight - The weight, for UCMP
+    @param is_local - local if non-zero, else remote
+    @param is_drop - Drop the packet
+    @param is_unreach - Drop the packet and rate limit send ICMP unreachable
+    @param is_prohibit - Drop the packet and rate limit send ICMP prohibited
+    @param afi - the afi of the next hop, IP46_TYPE_IP4=1, IP46_TYPE_IP6=2
+    @param next_hop[16] - the next hop address
+
+    WARNING: this type is replicated, pending cleanup completion
+
+*/
+typeonly manual_print manual_endian define fib_path2
+{
+  u32 sw_if_index;
+  u32 weight;
+  u8 is_local;
+  u8 is_drop;
+  u8 is_unreach;
+  u8 is_prohibit;
+  u8 afi;
+  u8 next_hop[16];
+};
+
+/** \brief mpls FIB table response
+    @param table_id - MPLS fib table id
+    @param s_bit - End-of-stack bit
+    @param label - MPLS label value
+    @param count - the number of fib_path in path
+    @param path  - array of of fib_path structures
+*/
+manual_endian manual_print define mpls_fib_details
+{
+  u32 context;
+  u32 table_id;
+  u8  eos_bit;
+  u32 label;
+  u32 count;
+  vl_api_fib_path2_t path[count];
+};
+
+/** \brief Bind/Unbind an MPLS local label to an IP prefix. i.e. create
+           a per-prefix label entry.
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param mb_mpls_table_id - The MPLS table-id the MPLS entry will be added in
+    @param mb_label - The MPLS label value to bind
+    @param mb_ip_table_id - The IP table-id of the IP prefix to bind to.
+    @param mb_create_table_if_needed - Create either/both tables if required.
+    @param mb_is_bind - Bind or unbind
+    @param mb_is_ip4 - The prefix to bind to is IPv4
+    @param mb_address_length - Length of IP prefix
+    @param mb_address[16] - IP prefix/
+*/
+define mpls_ip_bind_unbind
+{
+  u32 client_index;
+  u32 context;
+  u32 mb_mpls_table_id;
+  u32 mb_label;
+  u32 mb_ip_table_id;
+  u8 mb_create_table_if_needed;
+  u8 mb_is_bind;
+  u8 mb_is_ip4;
+  u8 mb_address_length;
+  u8 mb_address[16];
+};
+
+/** \brief Reply for MPLS IP bind/unbind request
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define mpls_ip_bind_unbind_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief MPLS tunnel Add / del route
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param mt_is_add - Is this a route add or delete
+    @param mt_sw_if_index - The SW interface index of the tunnel to delete
+    @param mt_next_hop_proto_is_ip4 - The next-hop is IPV4
+    @param mt_next_hop_weight - The weight, for UCMP
+    @param mt_next_hop[16] - the nextop address
+    @param mt_next_hop_sw_if_index - the next-hop SW interface
+    @param mt_next_hop_table_id - the next-hop table-id (if appropriate)
+    @param mt_next_hop_n_out_labels - the number of next-hop output labels
+    @param mt_next_hop_out_label_stack - the next-hop output label stack,  outer most first
+*/
+define mpls_tunnel_add_del
+{
+  u32 client_index;
+  u32 context;
+  u32 mt_sw_if_index;
+  u8 mt_is_add;
+  u8 mt_l2_only;
+  u8 mt_next_hop_proto_is_ip4;
+  u8 mt_next_hop_weight;
+  u8 mt_next_hop[16];
+  u8 mt_next_hop_n_out_labels;
+  u32 mt_next_hop_sw_if_index;
+  u32 mt_next_hop_table_id;
+  u32 mt_next_hop_out_label_stack[mt_next_hop_n_out_labels];
+};
+
+/** \brief Reply for MPLS tunnel add / del request
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+    @param sw_if_index - SW interface index of the tunnel created
+*/
+define mpls_tunnel_add_del_reply
+{
+  u32 context;
+  i32 retval;
+  u32 sw_if_index;
+};
+
+/** \brief Dump mpls eth tunnel table
+    @param client_index - opaque cookie to identify the sender
+    @param tunnel_index - eth tunnel identifier or -1 in case of all tunnels
+*/
+define mpls_tunnel_dump
+{
+  u32 client_index;
+  u32 context;
+  i32 tunnel_index;
+};
+
+/** \brief mpls eth tunnel operational state response
+    @param tunnel_index - eth tunnel identifier
+    @param intfc_address - interface ipv4 addr
+    @param mask_width - interface ipv4 addr mask
+    @param hw_if_index - interface id
+    @param l2_only -
+    @param tunnel_dst_mac -
+    @param tx_sw_if_index -
+    @param encap_index - reference to mpls label table
+    @param nlabels - number of resolved labels
+    @param labels - resolved labels
+*/
+define mpls_tunnel_details
+{
+  u32 context;
+  u32 tunnel_index;
+  u8 mt_l2_only;
+  u8 mt_sw_if_index;
+  u8 mt_next_hop_proto_is_ip4;
+  u8 mt_next_hop[16];
+  u32 mt_next_hop_sw_if_index;
+  u32 mt_next_hop_table_id;
+  u32 mt_next_hop_n_labels;
+  u32 mt_next_hop_out_labels[mt_next_hop_n_labels];
+};
+
+/** \brief Proxy ARP add / del request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param vrf_id - VRF / Fib table ID
+    @param is_add - 1 if adding the Proxy ARP range, 0 if deleting
+    @param low_address[4] - Low address of the Proxy ARP range
+    @param hi_address[4] - High address of the Proxy ARP range
+*/
+define proxy_arp_add_del
+{
+  u32 client_index;
+  u32 context;
+  u32 vrf_id;
+  u8 is_add;
+  u8 low_address[4];
+  u8 hi_address[4];
+};
+
+/** \brief Reply for proxy arp add / del request
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define proxy_arp_add_del_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Proxy ARP add / del request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - Which interface to enable / disable Proxy Arp on
+    @param enable_disable - 1 to enable Proxy ARP on interface, 0 to disable
+*/
+define proxy_arp_intfc_enable_disable
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  /* 1 = on, 0 = off */
+  u8 enable_disable;
+};
+
+/** \brief Reply for Proxy ARP interface enable / disable request
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define proxy_arp_intfc_enable_disable_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Reset VRF (remove all routes etc) request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_ipv6 - 1 for IPv6 neighbor, 0 for IPv4
+    @param vrf_id - ID of th FIB table / VRF to reset
+*/
+define reset_vrf
+{
+  u32 client_index;
+  u32 context;
+  u8 is_ipv6;
+  u32 vrf_id;
+};
+
+/** \brief Reply for Reset VRF request
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define reset_vrf_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Is Address Reachable request - DISABLED
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param next_hop_sw_if_index - index of interface used to get to next hop
+    @param is_ipv6 - 1 for IPv6, 0 for IPv4
+    @param is_error - address not found or does not match intf
+    @param address[] - Address in question 
+*/
+define is_address_reachable
+{
+  u32 client_index;		/* (api_main_t *) am->my_client_index */
+  u32 context;
+  u32 next_hop_sw_if_index;
+  u8 is_known;			/* on reply, this is the answer */
+  u8 is_ipv6;
+  u8 is_error;			/* address not found or does not match intf */
+  u8 address[16];
+};
+
+/** \brief Want Stats, register for stats updates
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param enable_disable - 1 = enable stats, 0 = disable
+    @param pid - pid of process requesting stats updates
+*/
+define want_stats
+{
+  u32 client_index;
+  u32 context;
+  u32 enable_disable;
+  u32 pid;
+};
+
+/** \brief Reply for Want Stats request
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define want_stats_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+typeonly manual_print manual_endian define ip4_fib_counter
+{
+  u32 address;
+  u8 address_length;
+  u64 packets;
+  u64 bytes;
+};
+
+manual_print manual_endian define vnet_ip4_fib_counters
+{
+  u32 vrf_id;
+  u32 count;
+  vl_api_ip4_fib_counter_t c[count];
+};
+
+typeonly manual_print manual_endian define ip6_fib_counter
+{
+  u64 address[2];
+  u8 address_length;
+  u64 packets;
+  u64 bytes;
+};
+
+manual_print manual_endian define vnet_ip6_fib_counters
+{
+  u32 vrf_id;
+  u32 count;
+  vl_api_ip6_fib_counter_t c[count];
+};
+
+/** \brief Request for a single block of summary stats
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+*/
+define vnet_get_summary_stats
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief Reply for vnet_get_summary_stats request
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for request
+    @param total_pkts -  
+    @param total_bytes -
+    @param vector_rate - 
+*/
+define vnet_summary_stats_reply
+{
+  u32 context;
+  i32 retval;
+  u64 total_pkts[2];
+  u64 total_bytes[2];
+  f64 vector_rate;
+};
+
+/** \brief OAM event structure
+    @param dst_address[] - 
+    @param state
+*/
+define oam_event
+{
+  u8 dst_address[4];
+  u8 state;
+};
+
+/** \brief Want OAM events request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param enable_disable- enable if non-zero, else disable
+    @param pid - pid of the requesting process
+*/
+define want_oam_events
+{
+  u32 client_index;
+  u32 context;
+  u32 enable_disable;
+  u32 pid;
+};
+
+/** \brief Want OAM events response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the want oam stats request
+*/
+define want_oam_events_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief OAM add / del target request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param vrf_id - vrf_id of the target
+    @param src_address[] - source address to use for the updates 
+    @param dst_address[] - destination address of the target
+    @param is_add - add target if non-zero, else delete
+*/
+define oam_add_del
+{
+  u32 client_index;
+  u32 context;
+  u32 vrf_id;
+  u8 src_address[4];
+  u8 dst_address[4];
+  u8 is_add;
+};
+
+/** \brief OAM add / del target response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code of the request
+*/
+define oam_add_del_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Reset fib table request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param vrf_id - vrf/table id of the fib table to reset
+    @param is_ipv6 - an ipv6 fib to reset if non-zero, else ipv4
+*/
+define reset_fib
+{
+  u32 client_index;
+  u32 context;
+  u32 vrf_id;
+  u8 is_ipv6;
+};
+
+/** \brief Reset fib response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the reset bfib request
+*/
+define reset_fib_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief DHCP Proxy config add / del request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param vrf_id - vrf id
+    @param if_ipv6 - ipv6 if non-zero, else ipv4
+    @param is_add - add the config if non-zero, else delete
+    @param insert_circuit_id - option82 suboption 1 fib number
+    @param dhcp_server[] - server address
+    @param dhcp_src_address[] - <fix this, need details>
+*/
+define dhcp_proxy_config
+{
+  u32 client_index;
+  u32 context;
+  u32 vrf_id;
+  u8 is_ipv6;
+  u8 is_add;
+  u8 insert_circuit_id;
+  u8 dhcp_server[16];
+  u8 dhcp_src_address[16];
+};
+
+/** \brief DHCP Proxy config response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define dhcp_proxy_config_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief DHCP Proxy set / unset vss request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param tbl_id - table id
+    @param oui - first part of vpn id
+    @param fib_id - second part of vpn id
+    @param is_ipv6 - ip6 if non-zero, else ip4
+    @param is_add - set vss if non-zero, else delete
+*/
+define dhcp_proxy_set_vss
+{
+  u32 client_index;
+  u32 context;
+  u32 tbl_id;
+  u32 oui;
+  u32 fib_id;
+  u8 is_ipv6;
+  u8 is_add;
+};
+
+/** \brief DHCP proxy set / unset vss response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define dhcp_proxy_set_vss_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Create loopback interface request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param mac_address - mac addr to assign to the interface if none-zero
+*/
+define create_loopback
+{
+  u32 client_index;
+  u32 context;
+  u8 mac_address[6];
+};
+
+/** \brief Create loopback interface response
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - sw index of the interface that was created
+    @param retval - return code for the request
+*/
+define create_loopback_reply
+{
+  u32 context;
+  i32 retval;
+  u32 sw_if_index;
+};
+
+/** \brief Delete loopback interface request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - sw index of the interface that was created
+*/
+define delete_loopback
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+};
+
+/** \brief Delete loopback interface response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define delete_loopback_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Control ping from client to api server request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+*/
+define control_ping
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief Control ping from the client to the server response
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+    @param vpe_pid - the pid of the vpe, returned by the server
+*/
+define control_ping_reply
+{
+  u32 context;
+  i32 retval;
+  u32 client_index;
+  u32 vpe_pid;
+};
+
+/** \brief Process a vpe parser cli string request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param cmd_in_shmem - pointer to cli command string
+*/
+define cli_request
+{
+  u32 client_index;
+  u32 context;
+  u64 cmd_in_shmem;
+};
+define cli_inband
+{
+  u32 client_index;
+  u32 context;
+  u32 length;
+  u8 cmd[length];
+};
+
+/** \brief vpe parser cli string response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for request
+    @param reply_in_shmem - Reply string from cli processing if any
+*/
+define cli_reply
+{
+  u32 context;
+  i32 retval;
+  u64 reply_in_shmem;
+};
+define cli_inband_reply
+{
+  u32 context;
+  i32 retval;
+  u32 length;
+  u8 reply[length];
+};
+
+/** \brief Set max allowed ARP or ip6 neighbor entries request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_ipv6 - neighbor limit if non-zero, else ARP limit
+    @param arp_neighbor_limit - the new limit, defaults are ~ 50k
+*/
+define set_arp_neighbor_limit
+{
+  u32 client_index;
+  u32 context;
+  u8 is_ipv6;
+  u32 arp_neighbor_limit;
+};
+
+/** \brief Set max allowed ARP or ip6 neighbor entries response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for request
+*/
+define set_arp_neighbor_limit_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief L2 interface patch add / del request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param rx_sw_if_index - receive side interface 
+    @param tx_sw_if_index - transmit side interface
+    @param is_add - if non-zero set up the interface patch, else remove it
+*/
+define l2_patch_add_del
+{
+  u32 client_index;
+  u32 context;
+  u32 rx_sw_if_index;
+  u32 tx_sw_if_index;
+  u8 is_add;
+};
+
+/** \brief L2 interface patch add / del response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define l2_patch_add_del_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief IPv6 segment routing tunnel add / del request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add the tunnel if non-zero, else delete it
+    @param name[] - tunnel name (len. 64)
+    @param src_address[] -
+    @param dst_address[] -
+    @param dst_mask_width -
+    @param inner_vrf_id -
+    @param outer_vrf_id -
+    @param flags_net_byte_order -
+    @param n_segments -
+    @param n_tags -
+    @param segs_and_tags[] -
+    @param policy_name[] - name of policy to associate this tunnel to (len. 64)
+*/
+define sr_tunnel_add_del
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u8 name[64];
+  u8 src_address[16];
+  u8 dst_address[16];
+  u8 dst_mask_width;
+  u32 inner_vrf_id;
+  u32 outer_vrf_id;
+  u16 flags_net_byte_order;
+  u8 n_segments;
+  u8 n_tags;
+  u8 policy_name[64];
+  u8 segs_and_tags[0];
+};
+
+/** \brief IPv6 segment routing tunnel add / del response
+    @param context - sender context, to match reply w/ request
+    @param retval - return value for request
+*/
+define sr_tunnel_add_del_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief IPv6 segment routing policy add / del request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add the tunnel if non-zero, else delete it
+    @param name[] - policy name (len. 64)
+    @param tunnel_names[] -
+*/
+define sr_policy_add_del
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u8 name[64];
+  u8 tunnel_names[0];
+};
+
+/** \brief IPv6 segment routing policy add / del response
+    @param context - sender context, to match reply w/ request
+    @param retval - return value for request
+*/
+define sr_policy_add_del_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief IPv6 segment routing multicast map to policy add / del request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add the tunnel if non-zero, else delete it
+    @param multicast_address[] - IP6 multicast address
+    @param policy_name[] = policy name (len.64)
+*/
+define sr_multicast_map_add_del
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u8 multicast_address[16];
+  u8 policy_name[64];
+};
+
+/** \brief IPv6 segment routing multicast map to policy add / del response
+    @param context - sender context, to match reply w/ request
+    @param retval - return value for request
+*/
+define sr_multicast_map_add_del_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Interface set vpath request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - interface used to reach neighbor
+    @param enable - if non-zero enable, else disable
+*/
+define sw_interface_set_vpath
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u8 enable;
+};
+
+/** \brief Interface set vpath response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define sw_interface_set_vpath_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Interface set vxlan-bypass request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - interface used to reach neighbor
+    @param is_ipv6 - if non-zero, enable ipv6-vxlan-bypass, else ipv4-vxlan-bypass
+    @param enable - if non-zero enable, else disable
+*/
+define sw_interface_set_vxlan_bypass
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u8 is_ipv6;
+  u8 enable;
+};
+
+/** \brief Interface set vxlan-bypass response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define sw_interface_set_vxlan_bypass_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Set L2 XConnect between two interfaces request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param rx_sw_if_index - Receive interface index
+    @param tx_sw_if_index - Transmit interface index
+    @param enable - enable xconnect if not 0, else set to L3 mode
+*/
+define sw_interface_set_l2_xconnect
+{
+  u32 client_index;
+  u32 context;
+  u32 rx_sw_if_index;
+  u32 tx_sw_if_index;
+  u8 enable;
+};
+
+/** \brief Set L2 XConnect response
+    @param context - sender context, to match reply w/ request
+    @param retval - L2 XConnect request return code
+*/
+define sw_interface_set_l2_xconnect_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Interface bridge mode request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param rx_sw_if_index - the interface
+    @param bd_id - bridge domain id
+    @param bvi - Setup interface as a bvi, bridge mode only
+    @param shg - Shared horizon group, for bridge mode only
+    @param enable - Enable beige mode if not 0, else set to L3 mode
+*/
+define sw_interface_set_l2_bridge
+{
+  u32 client_index;
+  u32 context;
+  u32 rx_sw_if_index;
+  u32 bd_id;
+  u8 shg;
+  u8 bvi;
+  u8 enable;
+};
+
+/** \brief Interface bridge mode response
+    @param context - sender context, to match reply w/ request
+    @param retval - Bridge mode request return code
+*/
+define sw_interface_set_l2_bridge_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief L2 FIB add entry request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param mac - the entry's mac address
+    @param bd_id - the entry's bridge domain id
+    @param sw_if_index - the interface
+    @param is_add - If non zero add the entry, else delete it
+    @param static_mac - 
+    @param filter_mac -
+*/
+define l2fib_add_del
+{
+  u32 client_index;
+  u32 context;
+  u64 mac;
+  u32 bd_id;
+  u32 sw_if_index;
+  u8 is_add;
+  u8 static_mac;
+  u8 filter_mac;
+  u8 bvi_mac;
+};
+
+/** \brief L2 FIB add entry response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the add l2fib entry request
+*/
+define l2fib_add_del_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Set L2 flags request !!! TODO - need more info, feature bits in l2_input.h
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - interface 
+    @param is_set - if non-zero, set the bits, else clear them
+    @param feature_bitmap - non-zero bits to set or clear
+*/
+define l2_flags
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u8 is_set;
+  u32 feature_bitmap;
+};
+
+/** \brief Set L2 bits response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the set l2 bits request
+*/
+define l2_flags_reply
+{
+  u32 context;
+  i32 retval;
+  u32 resulting_feature_bitmap;
+};
+
+/** \brief Set bridge flags (such as L2_LEARN, L2_FWD, L2_FLOOD, 
+    L2_UU_FLOOD, or L2_ARP_TERM) request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param bd_id - the bridge domain to set the flags for
+    @param is_set - if non-zero, set the flags, else clear them
+    @param feature_bitmap - bits that are non-zero to set or clear
+*/
+define bridge_flags
+{
+  u32 client_index;
+  u32 context;
+  u32 bd_id;
+  u8 is_set;
+  u32 feature_bitmap;
+};
+
+/** \brief Set bridge flags response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the set bridge flags request
+    @param resulting_feature_bitmap - the feature bitmap value after the request is implemented
+*/
+define bridge_flags_reply
+{
+  u32 context;
+  i32 retval;
+  u32 resulting_feature_bitmap;
+};
+
+/** \brief Set bridge domain ip to mac entry request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param bd_id - the bridge domain to set the flags for
+    @param is_add - if non-zero, add the entry, else clear it
+    @param is_ipv6 - if non-zero, ipv6 address, else ipv4 address
+    @param mac_address - MAC address
+    @param 
+*/
+define bd_ip_mac_add_del
+{
+  u32 client_index;
+  u32 context;
+  u32 bd_id;
+  u8 is_add;
+  u8 is_ipv6;
+  u8 ip_address[16];
+  u8 mac_address[6];
+};
+
+/** \brief Set bridge domain ip to mac entry response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the set bridge flags request
+*/
+define bd_ip_mac_add_del_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Add/Delete classification table request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add- if non-zero add the table, else delete it
+    @param del_chain - if non-zero delete the whole chain of tables
+    @param table_index - if add, reuturns index of the created table, else specifies the table to delete  
+    @param nbuckets - number of buckets when adding a table
+    @param memory_size - memory size when adding a table
+    @param match_n_vectors - number of match vectors
+    @param next_table_index - index of next table
+    @param miss_next_index - index of miss table
+    @param current_data_flag - option to use current node's packet payload
+            as the starting point from where packets are classified,
+            This option is only valid for L2/L3 input ACL for now.
+            0: by default, classify data from the buffer's start location
+            1: classify packets from VPP node’s current data pointer
+    @param current_data_offset - a signed value to shift the start location of
+            the packet to be classified
+            For example, if input IP ACL node is used, L2 header’s first byte
+            can be accessible by configuring current_data_offset to -14
+            if there is no vlan tag.
+            This is valid only if current_data_flag is set to 1.
+    @param mask[] - match mask
+*/
+define classify_add_del_table
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u8 del_chain;
+  u32 table_index;
+  u32 nbuckets;
+  u32 memory_size;
+  u32 skip_n_vectors;
+  u32 match_n_vectors;
+  u32 next_table_index;
+  u32 miss_next_index;
+  u32 current_data_flag;
+  i32 current_data_offset;
+  u8 mask[0];
+};
+
+/** \brief Add/Delete classification table response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the table add/del requst
+    @param new_table_index - for add, returned index of the new table
+    @param skip_n_vectors - for add, returned value of skip_n_vectors in table
+    @param match_n_vectors -for add, returned value of match_n_vectors in table
+*/
+define classify_add_del_table_reply
+{
+  u32 context;
+  i32 retval;
+  u32 new_table_index;
+  u32 skip_n_vectors;
+  u32 match_n_vectors;
+};
+
+/** \brief Classify add / del session request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add session if non-zero, else delete
+    @param table_index - index of the table to add/del the session, required
+    @param hit_next_index - for add, hit_next_index of new session, required
+    @param opaque_index - for add, opaque_index of new session
+    @param advance -for add, advance value for session
+    @param action -
+           0: no action (by default)
+              metadata is not used.
+           1: Classified IP packets will be looked up from the
+              specified ipv4 fib table (configured by metadata as VRF id).
+              Only valid for L3 input ACL node
+           2: Classified IP packets will be looked up from the
+              specified ipv6 fib table (configured by metadata as VRF id).
+              Only valid for L3 input ACL node
+    @param metadata - valid only if action != 0
+           VRF id if action is 1 or 2.
+    @param match[] - for add, match value for session, required
+*/
+define classify_add_del_session
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u32 table_index;
+  u32 hit_next_index;
+  u32 opaque_index;
+  i32 advance;
+  u8 action;
+  u32 metadata;
+  u8 match[0];
+};
+
+/** \brief Classify add / del session response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the add/del session request
+*/
+define classify_add_del_session_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Set/unset the classification table for an interface request 
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_ipv6 - ipv6 if non-zero, else ipv4
+    @param sw_if_index - interface to associate with the table
+    @param table_index - index of the table, if ~0 unset the table
+*/
+define classify_set_interface_ip_table
+{
+  u32 client_index;
+  u32 context;
+  u8 is_ipv6;
+  u32 sw_if_index;
+  u32 table_index;		/* ~0 => off */
+};
+
+/** \brief Set/unset interface classification table response 
+    @param context - sender context, to match reply w/ request
+    @param retval - return code
+*/
+define classify_set_interface_ip_table_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Set/unset l2 classification tables for an interface request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - interface to set/unset tables for
+    @param ip4_table_index - ip4 index, use ~0 for all 3 indexes to unset
+    @param ip6_table_index - ip6 index
+    @param other_table_index - other index
+*/
+define classify_set_interface_l2_tables
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  /* 3 x ~0 => off */
+  u32 ip4_table_index;
+  u32 ip6_table_index;
+  u32 other_table_index;
+  u8 is_input;
+};
+
+/** \brief Set/unset l2 classification tables for an interface response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define classify_set_interface_l2_tables_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Get node index using name request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param node_name[] - name of the node
+*/
+define get_node_index
+{
+  u32 client_index;
+  u32 context;
+  u8 node_name[64];
+};
+
+/** \brief Get node index using name request
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+    @param node_index - index of the desired node if found, else ~0
+*/
+define get_node_index_reply
+{
+  u32 context;
+  i32 retval;
+  u32 node_index;
+};
+
+/** \brief Set the next node for a given node request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param node_name[] - node to add the next node to
+    @param next_name[] - node to add as the next node
+*/
+define add_node_next
+{
+  u32 client_index;
+  u32 context;
+  u8 node_name[64];
+  u8 next_name[64];
+};
+
+/** \brief IP Set the next node for a given node response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the add next node request
+    @param next_index - the index of the next node if success, else ~0
+*/
+define add_node_next_reply
+{
+  u32 context;
+  i32 retval;
+  u32 next_index;
+};
+
+/** \brief DHCP Proxy config 2 add / del request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param rx_vrf_id - receive vrf id
+    @param server_vrf_id - server vrf id
+    @param if_ipv6 - ipv6 if non-zero, else ipv4
+    @param is_add - add the config if non-zero, else delete
+    @param insert_circuit_id - option82 suboption 1 fib number
+    @param dhcp_server[] - server address
+    @param dhcp_src_address[] - <fix this, need details>
+*/
+define dhcp_proxy_config_2
+{
+  u32 client_index;
+  u32 context;
+  u32 rx_vrf_id;
+  u32 server_vrf_id;
+  u8 is_ipv6;
+  u8 is_add;
+  u8 insert_circuit_id;
+  u8 dhcp_server[16];
+  u8 dhcp_src_address[16];
+};
+
+/** \brief DHCP Proxy config 2 add / del response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for request
+*/
+define dhcp_proxy_config_2_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief l2tpv3 tunnel interface create request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param client_address - remote client tunnel ip address
+    @param client_address - local tunnel ip address
+    @param is_ipv6 - ipv6 if non-zero, else ipv4
+    @param local_session_id - local tunnel session id
+    @param remote_session_id - remote tunnel session id
+    @param local_cookie - local tunnel cookie
+    @param l2_sublayer_present - l2 sublayer is present in packets if non-zero
+    @param encap_vrf_id - fib identifier used for outgoing encapsulated packets
+*/
+define l2tpv3_create_tunnel
+{
+  u32 client_index;
+  u32 context;
+  u8 client_address[16];
+  u8 our_address[16];
+  u8 is_ipv6;
+  u32 local_session_id;
+  u32 remote_session_id;
+  u64 local_cookie;
+  u64 remote_cookie;
+  u8 l2_sublayer_present;
+  u32 encap_vrf_id;
+};
+
+/** \brief l2tpv3 tunnel interface create response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+    @param sw_if_index - index of the new tunnel interface
+*/
+define l2tpv3_create_tunnel_reply
+{
+  u32 context;
+  i32 retval;
+  u32 sw_if_index;
+};
+
+define l2tpv3_set_tunnel_cookies
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u64 new_local_cookie;
+  u64 new_remote_cookie;
+};
+
+/** \brief L2TP tunnel set cookies response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define l2tpv3_set_tunnel_cookies_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+define sw_if_l2tpv3_tunnel_details
+{
+  u32 context;
+  u32 sw_if_index;
+  u8 interface_name[64];
+  u8 client_address[16];
+  u8 our_address[16];
+  u32 local_session_id;
+  u32 remote_session_id;
+  u64 local_cookie[2];
+  u64 remote_cookie;
+  u8 l2_sublayer_present;
+};
+
+define sw_if_l2tpv3_tunnel_dump
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief L2 fib clear table request, clear all mac entries in the l2 fib
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+*/
+define l2_fib_clear_table
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief L2 fib clear table response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define l2_fib_clear_table_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief L2 interface ethernet flow point filtering enable/disable request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - interface to enable/disable filtering on
+    @param enable_disable - if non-zero enable filtering, else disable
+*/
+define l2_interface_efp_filter
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u32 enable_disable;
+};
+
+/** \brief L2 interface ethernet flow point filtering response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define l2_interface_efp_filter_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+define l2tpv3_interface_enable_disable
+{
+  u32 client_index;
+  u32 context;
+  u8 enable_disable;
+  u32 sw_if_index;
+};
+
+define l2tpv3_interface_enable_disable_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+define l2tpv3_set_lookup_key
+{
+  u32 client_index;
+  u32 context;
+  /* 0 = ip6 src_address, 1 = ip6 dst_address, 2 = session_id */
+  u8 key;
+};
+
+define l2tpv3_set_lookup_key_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+define vxlan_add_del_tunnel
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u8 is_ipv6;
+  u8 src_address[16];
+  u8 dst_address[16];
+  u32 mcast_sw_if_index;
+  u32 encap_vrf_id;
+  u32 decap_next_index;
+  u32 vni;
+};
+
+define vxlan_add_del_tunnel_reply
+{
+  u32 context;
+  i32 retval;
+  u32 sw_if_index;
+};
+
+define vxlan_tunnel_dump
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+};
+
+define vxlan_tunnel_details
+{
+  u32 context;
+  u32 sw_if_index;
+  u8 src_address[16];
+  u8 dst_address[16];
+  u32 mcast_sw_if_index;
+  u32 encap_vrf_id;
+  u32 decap_next_index;
+  u32 vni;
+  u8 is_ipv6;
+};
+
+define gre_add_del_tunnel
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u8 is_ipv6;
+  u8 teb;
+  u8 src_address[16];
+  u8 dst_address[16];
+  u32 outer_fib_id;
+};
+
+define gre_add_del_tunnel_reply
+{
+  u32 context;
+  i32 retval;
+  u32 sw_if_index;
+};
+
+define gre_tunnel_dump
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+};
+
+define gre_tunnel_details
+{
+  u32 context;
+  u32 sw_if_index;
+  u8 is_ipv6;
+  u8 teb;
+  u8 src_address[16];
+  u8 dst_address[16];
+  u32 outer_fib_id;
+};
+
+/** \brief L2 interface vlan tag rewrite configure request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - interface the operation is applied to
+    @param vtr_op - Choose from l2_vtr_op_t enum values
+    @param push_dot1q - first pushed flag dot1q id set, else dot1ad
+    @param tag1 - Needed for any push or translate vtr op
+    @param tag2 - Needed for any push 2 or translate x-2 vtr ops
+*/
+define l2_interface_vlan_tag_rewrite
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u32 vtr_op;
+  u32 push_dot1q;		// ethertype of first pushed tag is dot1q/dot1ad
+  u32 tag1;			// first pushed tag
+  u32 tag2;			// second pushed tag
+};
+
+/** \brief L2 interface vlan tag rewrite response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define l2_interface_vlan_tag_rewrite_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief vhost-user interface create request
+    @param client_index - opaque cookie to identify the sender
+    @param is_server - our side is socket server
+    @param sock_filename - unix socket filename, used to speak with frontend
+    @param use_custom_mac - enable or disable the use of the provided hardware address
+    @param mac_address - hardware address to use if 'use_custom_mac' is set
+*/
+define create_vhost_user_if
+{
+  u32 client_index;
+  u32 context;
+  u8 is_server;
+  u8 sock_filename[256];
+  u8 renumber;
+  u32 custom_dev_instance;
+  u8 use_custom_mac;
+  u8 mac_address[6];
+  u8 tag[64];
+};
+
+/** \brief vhost-user interface create response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+    @param sw_if_index - interface the operation is applied to
+*/
+define create_vhost_user_if_reply
+{
+  u32 context;
+  i32 retval;
+  u32 sw_if_index;
+};
+
+/** \brief vhost-user interface modify request
+    @param client_index - opaque cookie to identify the sender
+    @param is_server - our side is socket server
+    @param sock_filename - unix socket filename, used to speak with frontend
+*/
+define modify_vhost_user_if
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u8 is_server;
+  u8 sock_filename[256];
+  u8 renumber;
+  u32 custom_dev_instance;
+};
+
+/** \brief vhost-user interface modify response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define modify_vhost_user_if_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief vhost-user interface delete request
+    @param client_index - opaque cookie to identify the sender
+*/
+define delete_vhost_user_if
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+};
+
+/** \brief vhost-user interface delete response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define delete_vhost_user_if_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+define create_subif
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u32 sub_id;
+
+  /* These fields map directly onto the subif template */
+  u8 no_tags;
+  u8 one_tag;
+  u8 two_tags;
+  u8 dot1ad;			// 0 = dot1q, 1=dot1ad
+  u8 exact_match;
+  u8 default_sub;
+  u8 outer_vlan_id_any;
+  u8 inner_vlan_id_any;
+  u16 outer_vlan_id;
+  u16 inner_vlan_id;
+};
+
+define create_subif_reply
+{
+  u32 context;
+  i32 retval;
+  u32 sw_if_index;
+};
+
+/** \brief show version
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+*/
+define show_version
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief show version response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+    @param program - name of the program (vpe)
+    @param version  - version of the program
+    @param build_directory - root of the workspace where the program was built
+*/
+define show_version_reply
+{
+  u32 context;
+  i32 retval;
+  u8 program[32];
+  u8 version[32];
+  u8 build_date[32];
+  u8 build_directory[256];
+};
+
+/** \brief Vhost-user interface details structure (fix this)
+    @param sw_if_index - index of the interface
+    @param interface_name - name of interface
+    @param virtio_net_hdr_sz - net header size
+    @param features - interface features
+    @param is_server - vhost-user server socket
+    @param sock_filename - socket filename
+    @param num_regions - number of used memory regions
+*/
+define sw_interface_vhost_user_details
+{
+  u32 context;
+  u32 sw_if_index;
+  u8 interface_name[64];
+  u32 virtio_net_hdr_sz;
+  u64 features;
+  u8 is_server;
+  u8 sock_filename[256];
+  u32 num_regions;
+  i32 sock_errno;
+};
+
+/* works */
+define sw_interface_vhost_user_dump
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief l2 fib table entry structure
+    @param bd_id - the l2 fib / bridge domain table id
+    @param mac - the entry's mac address
+    @param sw_if_index - index of the interface
+    @param static_mac - the entry is statically configured.
+    @param filter_mac - the entry is a mac filter entry.
+    @param bvi_mac - the mac address is a bridge virtual interface
+*/
+define l2_fib_table_entry
+{
+  u32 context;
+  u32 bd_id;
+  u64 mac;
+  u32 sw_if_index;
+  u8 static_mac;
+  u8 filter_mac;
+  u8 bvi_mac;
+};
+
+/** \brief Dump l2 fib (aka bridge domain) table
+    @param client_index - opaque cookie to identify the sender
+    @param bd_id - the l2 fib / bridge domain table identifier
+*/
+define l2_fib_table_dump
+{
+  u32 client_index;
+  u32 context;
+  u32 bd_id;
+};
+
+define vxlan_gpe_add_del_tunnel
+{
+  u32 client_index;
+  u32 context;
+  u8 is_ipv6;
+  u8 local[16];
+  u8 remote[16];
+  u32 encap_vrf_id;
+  u32 decap_vrf_id;
+  u8 protocol;
+  u32 vni;
+  u8 is_add;
+};
+
+define vxlan_gpe_add_del_tunnel_reply
+{
+  u32 context;
+  i32 retval;
+  u32 sw_if_index;
+};
+
+define vxlan_gpe_tunnel_dump
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+};
+
+define vxlan_gpe_tunnel_details
+{
+  u32 context;
+  u32 sw_if_index;
+  u8 local[16];
+  u8 remote[16];
+  u32 vni;
+  u8 protocol;
+  u32 encap_vrf_id;
+  u32 decap_vrf_id;
+  u8 is_ipv6;
+};
+
+/** \brief add or delete locator_set
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add address if non-zero, else delete
+    @param locator_set_name - locator name
+    @param locator_num - number of locators
+    @param locators - LISP locator records
+        Structure of one locator record is as follows:
+
+        define locator_t {
+          u32 sw_if_index;
+          u8 priority;
+          u8 weight;
+        }
+*/
+define lisp_add_del_locator_set
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u8 locator_set_name[64];
+  u32 locator_num;
+  u8 locators[0];
+};
+
+/** \brief Reply for locator_set add/del
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+    @param ls_index - locator set index
+*/
+define lisp_add_del_locator_set_reply
+{
+  u32 context;
+  i32 retval;
+  u32 ls_index;
+};
+
+/** \brief add or delete locator for locator_set
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add address if non-zero, else delete
+    @param locator_set_name - name of locator_set to add/del locator
+    @param sw_if_index - index of the interface
+    @param priority - priority of the lisp locator
+    @param weight - weight of the lisp locator
+*/
+define lisp_add_del_locator
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u8 locator_set_name[64];
+  u32 sw_if_index;
+  u8 priority;
+  u8 weight;
+};
+
+/** \brief Reply for locator add/del
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define lisp_add_del_locator_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief add or delete lisp eid-table
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add address if non-zero, else delete
+    @param eid_type:
+      0 : ipv4
+      1 : ipv6
+      2 : mac
+    @param eid - EID can be ip4, ip6 or mac
+    @param prefix_len - prefix len
+    @param locator_set_name - name of locator_set to add/del eid-table
+    @param vni - virtual network instance
+    @param key_id
+      HMAC_NO_KEY           0
+      HMAC_SHA_1_96         1
+      HMAC_SHA_256_128      2
+    @param key - secret key
+*/
+define lisp_add_del_local_eid
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u8 eid_type;
+  u8 eid[16];
+  u8 prefix_len;
+  u8 locator_set_name[64];
+  u32 vni;
+  u16 key_id;
+  u8 key[64];
+};
+
+/** \brief Reply for local_eid add/del
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define lisp_add_del_local_eid_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief add or delete lisp gpe tunnel
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add address if non-zero, else delete
+    @param eid_type -
+      0 : ipv4
+      1 : ipv6
+      2 : mac
+    @param rmt_eid - remote eid
+    @param lcl_eid - local eid
+    @param rmt_len - remote prefix len
+    @param lcl_len - local prefix len
+    @param vni - virtual network identifier
+    @param dp_table - vrf/bridge domain id
+    @param loc_num - number of locators
+    @param lcl_locs - array of local locators
+    @param rmt_locs - array of remote locators
+    @param action - negative action when 0 locators configured
+*/
+define lisp_gpe_add_del_fwd_entry
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u8 eid_type;
+  u8 rmt_eid[16];
+  u8 lcl_eid[16];
+  u8 rmt_len;
+  u8 lcl_len;
+  u32 vni;
+  u32 dp_table;
+  u32 loc_num;
+  u8 lcl_locs[loc_num];
+  u8 rmt_locs[loc_num];
+  u8 action;
+};
+
+/** \brief Reply for gpe_fwd_entry add/del
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define lisp_gpe_add_del_fwd_entry_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Add/delete map server
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add address if non-zero; delete otherwise
+    @param is_ipv6 - if non-zero the address is ipv6, else ipv4
+    @param ip_address - map server IP address
+*/
+define lisp_add_del_map_server
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u8 is_ipv6;
+  u8 ip_address[16];
+};
+
+/** \brief Reply for lisp_add_del_map_server
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define lisp_add_del_map_server_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief add or delete map-resolver
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add address if non-zero, else delete
+    @param is_ipv6 - if non-zero the address is ipv6, else ipv4
+    @param ip_address - array of address bytes
+*/
+define lisp_add_del_map_resolver
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u8 is_ipv6;
+  u8 ip_address[16];
+};
+
+/** \brief Reply for map_resolver add/del
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define lisp_add_del_map_resolver_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief enable or disable lisp-gpe protocol
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_en - enable protocol if non-zero, else disable
+*/
+define lisp_gpe_enable_disable
+{
+  u32 client_index;
+  u32 context;
+  u8 is_en;
+};
+
+/** \brief Reply for gpe enable/disable
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define lisp_gpe_enable_disable_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief enable or disable LISP feature
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_en - enable protocol if non-zero, else disable
+*/
+define lisp_enable_disable
+{
+  u32 client_index;
+  u32 context;
+  u8 is_en;
+};
+
+/** \brief Reply for gpe enable/disable
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define lisp_enable_disable_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief add or delete gpe_iface
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add address if non-zero, else delete
+*/
+define lisp_gpe_add_del_iface
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u8 is_l2;
+  u32 dp_table;
+  u32 vni;
+};
+
+/** \brief Reply for gpe_iface add/del
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define lisp_gpe_add_del_iface_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief configure or disable LISP PITR node
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param ls_name - locator set name
+    @param is_add - add locator set if non-zero, else disable pitr
+*/
+define lisp_pitr_set_locator_set
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u8 ls_name[64];
+};
+
+/** \brief Reply for lisp_pitr_set_locator_set
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define lisp_pitr_set_locator_set_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Get state of LISP RLOC probing
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+*/
+define show_lisp_rloc_probe_state
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief Reply for show_lisp_rloc_probe_state
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+    @param is_enabled - state of RLOC probing
+*/
+define show_lisp_rloc_probe_state_reply
+{
+  u32 context;
+  i32 retval;
+  u8 is_enabled;
+};
+
+/** \brief enable/disable LISP RLOC probing
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_enable - enable if non-zero; disable otherwise
+*/
+define lisp_rloc_probe_enable_disable
+{
+  u32 client_index;
+  u32 context;
+  u8 is_enabled;
+};
+
+/** \brief Reply for lisp_rloc_probe_enable_disable
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define lisp_rloc_probe_enable_disable_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief enable/disable LISP map-register
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_enable - enable if non-zero; disable otherwise
+*/
+define lisp_map_register_enable_disable
+{
+  u32 client_index;
+  u32 context;
+  u8 is_enabled;
+};
+
+/** \brief Reply for lisp_map_register_enable_disable
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define lisp_map_register_enable_disable_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Get state of LISP map-register
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+*/
+define show_lisp_map_register_state
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief Reply for show_lisp_map_register_state
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define show_lisp_map_register_state_reply
+{
+  u32 context;
+  i32 retval;
+  u8 is_enabled;
+};
+
+/** \brief set LISP map-request mode. Based on configuration VPP will send
+      src/dest or just normal destination map requests.
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param mode - new map-request mode. Supported values are:
+      0 - destination only
+      1 - source/destaination
+*/
+define lisp_map_request_mode
+{
+  u32 client_index;
+  u32 context;
+  u8 mode;
+};
+
+/** \brief Reply for lisp_map_request_mode
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define lisp_map_request_mode_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Request for LISP map-request mode
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+*/
+define show_lisp_map_request_mode
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief Reply for show_lisp_map_request_mode
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+    @param mode - map-request mode
+*/
+define show_lisp_map_request_mode_reply
+{
+  u32 context;
+  i32 retval;
+  u8 mode;
+};
+
+/** \brief add or delete remote static mapping
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add address if non-zero, else delete
+    @param is_src_dst - flag indicating src/dst based routing policy
+    @param del_all - if set, delete all remote mappings
+    @param vni - virtual network instance
+    @param action - negative map-reply action
+    @param eid_type -
+      0 : ipv4
+      1 : ipv6
+      2 : mac
+    @param deid - dst EID
+    @param seid - src EID, valid only if is_src_dst is enabled
+    @param rloc_num - number of remote locators
+    @param rlocs - remote locator records
+        Structure of remote locator:
+
+        define rloc_t {
+          u8 is_ip4;
+          u8 priority;
+          u8 weight;
+          u8 addr[16];
+        }
+*/
+define lisp_add_del_remote_mapping
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u8 is_src_dst;
+  u8 del_all;
+  u32 vni;
+  u8 action;
+  u8 eid_type;
+  u8 eid[16];
+  u8 eid_len;
+  u8 seid[16];
+  u8 seid_len;
+  u32 rloc_num;
+  u8 rlocs[0];
+};
+
+/** \brief Reply for lisp_add_del_remote_mapping
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define lisp_add_del_remote_mapping_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief add or delete LISP adjacency adjacency
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add address if non-zero, else delete
+    @param vni - virtual network instance
+    @param eid_type -
+      0 : ipv4
+      1 : ipv6
+      2 : mac
+    @param reid - remote EID
+    @param leid - local EID
+*/
+define lisp_add_del_adjacency
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u32 vni;
+  u8 eid_type;
+  u8 reid[16];
+  u8 leid[16];
+  u8 reid_len;
+  u8 leid_len;
+};
+
+/** \brief Reply for lisp_add_del_adjacency
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define lisp_add_del_adjacency_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief add or delete map request itr rlocs
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add address if non-zero, else delete
+    @param locator_set_name - locator set name
+*/
+define lisp_add_del_map_request_itr_rlocs
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u8 locator_set_name[64];
+};
+
+/** \brief Reply for lisp_add_del_map_request_itr_rlocs
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+
+define lisp_add_del_map_request_itr_rlocs_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief map/unmap vni/bd_index to vrf
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add or delete mapping
+    @param dp_table - virtual network id/bridge domain index
+    @param vrf - vrf
+*/
+define lisp_eid_table_add_del_map
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u32 vni;
+  u32 dp_table;
+  u8 is_l2;
+};
+
+/** \brief Reply for lisp_eid_table_add_del_map
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define lisp_eid_table_add_del_map_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Request for map lisp locator status
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param locator_set_index - index of locator_set
+    @param ls_name - locator set name
+    @param is_index_set - flag indicating whether ls_name or ls_index is set
+ */
+define lisp_locator_dump
+{
+  u32 client_index;
+  u32 context;
+  u32 ls_index;
+  u8 ls_name[64];
+  u8 is_index_set;
+};
+
+/** \brief LISP locator_set status
+    @param local - if is set, then locator is local
+    @param locator_set_name - name of the locator_set
+    @param sw_if_index - sw_if_index of the locator
+    @param priority - locator priority
+    @param weight - locator weight
+  */
+define lisp_locator_details
+{
+  u32 context;
+  u8 local;
+  u32 sw_if_index;
+  u8 is_ipv6;
+  u8 ip_address[16];
+  u8 priority;
+  u8 weight;
+};
+
+/** \brief LISP locator_set status
+    @param context - sender context, to match reply w/ request
+    @param ls_index - locator set index
+    @param ls_name - name of the locator set
+ */
+define lisp_locator_set_details
+{
+  u32 context;
+  u32 ls_index;
+  u8 ls_name[64];
+};
+
+/** \brief Request for locator_set summary status
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param filter - filter type
+      Supported values:
+        0: all locator sets
+        1: local locator sets
+        2: remote locator sets
+ */
+define lisp_locator_set_dump
+{
+  u32 client_index;
+  u32 context;
+  u8 filter;
+};
+
+/** \brief Dump lisp eid-table
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param locator_set_index - index of locator_set, if ~0 then the mapping
+                                is negative
+    @param action - negative map request action
+    @param is_local - local if non-zero, else remote
+    @param eid_type:
+      0 : ipv4
+      1 : ipv6
+      2 : mac
+    @param is_src_dst - EID is type of source/destination
+    @param eid - EID can be ip4, ip6 or mac
+    @param eid_prefix_len - prefix length
+    @param seid - source EID can be ip4, ip6 or mac
+    @param seid_prefix_len - source prefix length
+    @param vni - virtual network instance
+    @param ttl - time to live
+    @param authoritative - authoritative
+    @param key_id
+      HMAC_NO_KEY           0
+      HMAC_SHA_1_96         1
+      HMAC_SHA_256_128      2
+    @param key - secret key
+*/
+
+define lisp_eid_table_details
+{
+  u32 context;
+  u32 locator_set_index;
+  u8 action;
+  u8 is_local;
+  u8 eid_type;
+  u8 is_src_dst;
+  u32 vni;
+  u8 eid[16];
+  u8 eid_prefix_len;
+  u8 seid[16];
+  u8 seid_prefix_len;
+  u32 ttl;
+  u8 authoritative;
+  u16 key_id;
+  u8 key[64];
+};
+
+/** \brief Request for eid table summary status
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param eid_set - if non-zero request info about specific mapping
+    @param vni - virtual network instance; valid only if eid_set != 0
+    @param prefix_length - prefix length if EID is IP address;
+      valid only if eid_set != 0
+    @param eid_type - EID type; valid only if eid_set != 0
+      Supported values:
+        0: EID is IPv4
+        1: EID is IPv6
+        2: EID is ethernet address
+    @param eid - endpoint identifier
+    @param filter - filter type;
+      Support values:
+        0: all eid
+        1: local eid
+        2: remote eid
+ */
+define lisp_eid_table_dump
+{
+  u32 client_index;
+  u32 context;
+  u8 eid_set;
+  u8 prefix_length;
+  u32 vni;
+  u8 eid_type;
+  u8 eid[16];
+  u8 filter;
+};
+
+/** \brief LISP adjacency
+    @param eid_type -
+      0 : ipv4
+      1 : ipv6
+      2 : mac
+    @param reid - remote EID
+    @param leid - local EID
+    @param reid_prefix_len - remote EID IP prefix length
+    @param leid_prefix_len - local EID IP prefix length
+  */
+typeonly manual_print manual_endian define lisp_adjacency
+{
+  u8 eid_type;
+  u8 reid[16];
+  u8 leid[16];
+  u8 reid_prefix_len;
+  u8 leid_prefix_len;
+};
+
+/** \brief LISP adjacency reply
+    @param count - number of adjacencies
+    @param adjacencies - array of adjacencies
+  */
+manual_endian manual_print define lisp_adjacencies_get_reply
+{
+  u32 context;
+  i32 retval;
+  u32 count;
+  vl_api_lisp_adjacency_t adjacencies[count];
+};
+
+/** \brief Request for LISP adjacencies
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param vni - filter adjacencies by VNI
+ */
+define lisp_adjacencies_get
+{
+  u32 client_index;
+  u32 context;
+  u32 vni;
+};
+
+/** \brief Shows relationship between vni and vrf/bd
+    @param dp_table - VRF index or bridge domain index
+    @param vni - vitual network instance
+  */
+define lisp_eid_table_map_details
+{
+  u32 context;
+  u32 vni;
+  u32 dp_table;
+};
+
+/** \brief Request for lisp_eid_table_map_details
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_l2 - if set dump vni/bd mappings else vni/vrf
+ */
+define lisp_eid_table_map_dump
+{
+  u32 client_index;
+  u32 context;
+  u8 is_l2;
+};
+
+/** \brief Dumps all VNIs used in mappings
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+  */
+define lisp_eid_table_vni_dump
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief reply to lisp_eid_table_vni_dump
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param vni - virtual network instance
+ */
+define lisp_eid_table_vni_details
+{
+  u32 client_index;
+  u32 context;
+  u32 vni;
+};
+
+define lisp_gpe_tunnel_details
+{
+  u32 context;
+  u32 tunnels;
+  u8 is_ipv6;
+  u8 source_ip[16];
+  u8 destination_ip[16];
+  u32 encap_fib_id;
+  u32 decap_fib_id;
+  u32 dcap_next;
+  u8 lisp_ver;
+  u8 next_protocol;
+  u8 flags;
+  u8 ver_res;
+  u8 res;
+  u32 iid;
+};
+
+/** \brief Request for gpe tunnel summary status
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+ */
+define lisp_gpe_tunnel_dump
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief LISP map resolver status
+    @param is_ipv6 - if non-zero the address is ipv6, else ipv4
+    @param ip_address - array of address bytes
+ */
+define lisp_map_resolver_details
+{
+  u32 context;
+  u8 is_ipv6;
+  u8 ip_address[16];
+};
+
+/** \brief Request for map resolver summary status
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+ */
+define lisp_map_resolver_dump
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief LISP map server details
+    @param is_ipv6 - if non-zero the address is ipv6, else ipv4
+    @param ip_address - array of address bytes
+ */
+define lisp_map_server_details
+{
+  u32 context;
+  u8 is_ipv6;
+  u8 ip_address[16];
+};
+
+/** \brief Request for map server summary status
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+ */
+define lisp_map_server_dump
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief Request for lisp-gpe protocol status
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+*/
+define show_lisp_status
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief Status of lisp, enable or disable
+    @param context - sender context, to match reply w/ request
+    @param feature_status - lisp enable if non-zero, else disable
+    @param gpe_status - lisp enable if non-zero, else disable
+*/
+define show_lisp_status_reply
+{
+  u32 context;
+  i32 retval;
+  u8 feature_status;
+  u8 gpe_status;
+};
+
+/** \brief Get LISP map request itr rlocs status
+    @param context - sender context, to match reply w/ request
+    @param locator_set_name - name of the locator_set
+ */
+define lisp_get_map_request_itr_rlocs
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief Request for map request itr rlocs summary status
+ */
+define lisp_get_map_request_itr_rlocs_reply
+{
+  u32 context;
+  i32 retval;
+  u8 locator_set_name[64];
+};
+
+/** \brief Request for lisp pitr status
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+*/
+define show_lisp_pitr
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief Status of lisp pitr, enable or disable
+    @param context - sender context, to match reply w/ request
+    @param status - lisp pitr enable if non-zero, else disable
+    @param locator_set_name -  name of the locator_set
+*/
+define show_lisp_pitr_reply
+{
+  u32 context;
+  i32 retval;
+  u8 status;
+  u8 locator_set_name[64];
+};
+
+/* Gross kludge, DGMS */
+define interface_name_renumber
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u32 new_show_dev_instance;
+};
+
+define interface_name_renumber_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Register for ip4 arp resolution events
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param enable_disable - 1 => register for events, 0 => cancel registration
+    @param pid - sender's pid
+    @param address - the exact ip4 address of interest
+*/
+define want_ip4_arp_events
+{
+  u32 client_index;
+  u32 context;
+  u8 enable_disable;
+  u32 pid;
+  u32 address;
+};
+
+/** \brief Reply for interface events registration
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define want_ip4_arp_events_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Tell client about an ip4 arp resolution event
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param address - the exact ip4 address of interest
+    @param pid - client pid registered to receive notification
+    @param sw_if_index - interface which received ARP packet
+    @param new_mac - the new mac address 
+    @param mac_ip - 0: resolution event, 1: mac/ip binding in bd
+*/
+define ip4_arp_event
+{
+  u32 client_index;
+  u32 context;
+  u32 address;
+  u32 pid;
+  u32 sw_if_index;
+  u8 new_mac[6];
+  u8 mac_ip;
+};
+
+/** \brief Register for ip6 nd resolution events
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param enable_disable - 1 => register for events, 0 => cancel registration
+    @param pid - sender's pid
+    @param address - the exact ip6 address of interest
+*/
+define want_ip6_nd_events
+{
+  u32 client_index;
+  u32 context;
+  u8 enable_disable;
+  u32 pid;
+  u8 address[16];
+};
+
+/** \brief Reply for ip6 nd resolution events registration
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define want_ip6_nd_events_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Tell client about an ip6 nd resolution or mac/ip event
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param pid - client pid registered to receive notification
+    @param sw_if_index - interface which received ARP packet
+    @param address - the exact ip6 address of interest
+    @param new_mac - the new mac address 
+    @param mac_ip - 0: resolution event, 1: mac/ip binding in bd
+*/
+define ip6_nd_event
+{
+  u32 client_index;
+  u32 context;
+  u32 pid;
+  u32 sw_if_index;
+  u8 address[16];
+  u8 new_mac[6];
+  u8 mac_ip;
+};
+    
+/** \brief L2 bridge domain add or delete request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param bd_id - the bridge domain to create
+    @param flood - enable/disable bcast/mcast flooding in the bd
+    @param uu_flood - enable/disable uknown unicast flood in the bd
+    @param forward - enable/disable forwarding on all interfaces in the bd
+    @param learn - enable/disable learning on all interfaces in the bd
+    @param arp_term - enable/disable arp termination in the bd
+    @param mac_age - mac aging time in min, 0 for disabled
+    @param is_add - add or delete flag
+*/
+define bridge_domain_add_del
+{
+  u32 client_index;
+  u32 context;
+  u32 bd_id;
+  u8 flood;
+  u8 uu_flood;
+  u8 forward;
+  u8 learn;
+  u8 arp_term;
+  u8 mac_age;
+  u8 is_add;
+};
+
+/** \brief L2 bridge domain add or delete response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the set bridge flags request
+*/
+define bridge_domain_add_del_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief L2 bridge domain request operational state details
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param bd_id - the bridge domain id desired or ~0 to request all bds
+*/
+define bridge_domain_dump
+{
+  u32 client_index;
+  u32 context;
+  u32 bd_id;
+};
+
+/** \brief L2 bridge domain operational state response
+    @param bd_id - the bridge domain id
+    @param flood - bcast/mcast flooding state on all interfaces in the bd
+    @param uu_flood - uknown unicast flooding state on all interfaces in the bd
+    @param forward - forwarding state on all interfaces in the bd
+    @param learn - learning state on all interfaces in the bd
+    @param arp_term - arp termination state on all interfaces in the bd
+    @param mac_age - mac aging time in min, 0 for disabled
+    @param n_sw_ifs - number of sw_if_index's in the domain
+*/
+define bridge_domain_details
+{
+  u32 context;
+  u32 bd_id;
+  u8 flood;
+  u8 uu_flood;
+  u8 forward;
+  u8 learn;
+  u8 arp_term;
+  u8 mac_age;
+  u32 bvi_sw_if_index;
+  u32 n_sw_ifs;
+};
+
+/** \brief L2 bridge domain sw interface operational state response
+    @param bd_id - the bridge domain id
+    @param sw_if_index - sw_if_index in the domain
+    @param shg - split horizon group for the interface
+*/
+define bridge_domain_sw_if_details
+{
+  u32 context;
+  u32 bd_id;
+  u32 sw_if_index;
+  u8 shg;
+};
+
+/** \brief DHCP Client config add / del request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - index of the interface for DHCP client
+    @param hostname - hostname
+    @param is_add - add the config if non-zero, else delete
+    @param want_dhcp_event - DHCP event sent to the sender
+           via dhcp_compl_event API message if non-zero
+    @param pid - sender's pid
+*/
+define dhcp_client_config
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u8 hostname[64];
+  u8 is_add;
+  u8 want_dhcp_event;
+  u32 pid;
+};
+
+/** \brief DHCP Client config response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define dhcp_client_config_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Set/unset input ACL interface
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - interface to set/unset input ACL
+    @param ip4_table_index - ip4 classify table index (~0 for skip)
+    @param ip6_table_index - ip6 classify table index (~0 for skip)
+    @param l2_table_index  -  l2 classify table index (~0 for skip)
+    @param is_add - Set input ACL if non-zero, else unset
+    Note: User is recommeneded to use just one valid table_index per call.
+          (ip4_table_index, ip6_table_index, or l2_table_index)
+*/
+define input_acl_set_interface
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u32 ip4_table_index;
+  u32 ip6_table_index;
+  u32 l2_table_index;
+  u8 is_add;
+};
+
+/** \brief Set/unset input ACL interface response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define input_acl_set_interface_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief IPsec: Add/delete Security Policy Database
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add SPD if non-zero, else delete
+    @param spd_id - SPD instance id (control plane allocated)
+*/
+
+define ipsec_spd_add_del
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u32 spd_id;
+};
+
+/** \brief Reply for IPsec: Add/delete Security Policy Database entry
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+
+define ipsec_spd_add_del_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief IPsec: Add/delete SPD from interface
+
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add security mode if non-zero, else delete
+    @param sw_if_index - index of the interface
+    @param spd_id - SPD instance id to use for lookups
+*/
+
+
+define ipsec_interface_add_del_spd
+{
+  u32 client_index;
+  u32 context;
+
+  u8 is_add;
+  u32 sw_if_index;
+  u32 spd_id;
+};
+
+/** \brief Reply for IPsec: Add/delete SPD from interface
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+
+define ipsec_interface_add_del_spd_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief IPsec: Add/delete Security Policy Database entry
+
+    See RFC 4301, 4.4.1.1 on how to match packet to selectors
+
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add SPD if non-zero, else delete
+    @param spd_id - SPD instance id (control plane allocated)
+    @param priority - priority of SPD entry (non-unique value).  Used to order SPD matching - higher priorities match before lower
+    @param is_outbound - entry applies to outbound traffic if non-zero, otherwise applies to inbound traffic
+    @param is_ipv6 - remote/local address are IPv6 if non-zero, else IPv4
+    @param remote_address_start - start of remote address range to match
+    @param remote_address_stop - end of remote address range to match
+    @param local_address_start - start of local address range to match
+    @param local_address_stop - end of local address range to match
+    @param protocol - protocol type to match [0 means any]
+    @param remote_port_start - start of remote port range to match ...
+    @param remote_port_stop - end of remote port range to match [0 to 65535 means ANY, 65535 to 0 means OPAQUE]
+    @param local_port_start - start of local port range to match ...
+    @param local_port_stop - end of remote port range to match [0 to 65535 means ANY, 65535 to 0 means OPAQUE]
+    @param policy - 0 = bypass (no IPsec processing), 1 = discard (discard packet with ICMP processing), 2 = resolve (send request to control plane for SA resolving, and discard without ICMP processing), 3 = protect (apply IPsec policy using following parameters)
+    @param sa_id - SAD instance id (control plane allocated)
+
+*/
+
+define ipsec_spd_add_del_entry
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+
+  u32 spd_id;
+  i32 priority;
+  u8 is_outbound;
+
+  // Selector
+  u8 is_ipv6;
+  u8 is_ip_any;
+  u8 remote_address_start[16];
+  u8 remote_address_stop[16];
+  u8 local_address_start[16];
+  u8 local_address_stop[16];
+
+  u8 protocol;
+
+  u16 remote_port_start;
+  u16 remote_port_stop;
+  u16 local_port_start;
+  u16 local_port_stop;
+
+  // Policy
+  u8 policy;
+  u32 sa_id;
+};
+
+/** \brief Reply for IPsec: Add/delete Security Policy Database entry
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+
+define ipsec_spd_add_del_entry_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief IPsec: Add/delete Security Association Database entry
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add SAD entry if non-zero, else delete
+
+    @param sad_id - sad id
+
+    @param spi - security parameter index
+
+    @param protocol - 0 = AH, 1 = ESP
+
+    @param crypto_algorithm - 0 = Null, 1 = AES-CBC-128, 2 = AES-CBC-192, 3 = AES-CBC-256, 4 = 3DES-CBC
+    @param crypto_key_length - length of crypto_key in bytes
+    @param crypto_key - crypto keying material
+
+    @param integrity_algorithm - 0 = None, 1 = MD5-96, 2 = SHA1-96, 3 = SHA-256, 4 = SHA-384, 5=SHA-512
+    @param integrity_key_length - length of integrity_key in bytes
+    @param integrity_key - integrity keying material
+
+    @param use_extended_sequence_number - use ESN when non-zero
+
+    @param is_tunnel - IPsec tunnel mode if non-zero, else transport mode
+    @param is_tunnel_ipv6 - IPsec tunnel mode is IPv6 if non-zero, else IPv4 tunnel only valid if is_tunnel is non-zero
+    @param tunnel_src_address - IPsec tunnel source address IPv6 if is_tunnel_ipv6 is non-zero, else IPv4. Only valid if is_tunnel is non-zero
+    @param tunnel_dst_address - IPsec tunnel destination address IPv6 if is_tunnel_ipv6 is non-zero, else IPv4. Only valid if is_tunnel is non-zero
+
+    To be added:
+     Anti-replay
+     IPsec tunnel address copy mode (to support GDOI)
+ */
+
+define ipsec_sad_add_del_entry
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+
+  u32 sad_id;
+
+  u32 spi;
+
+  u8 protocol;
+
+  u8 crypto_algorithm;
+  u8 crypto_key_length;
+  u8 crypto_key[128];
+
+  u8 integrity_algorithm;
+  u8 integrity_key_length;
+  u8 integrity_key[128];
+
+  u8 use_extended_sequence_number;
+
+  u8 is_tunnel;
+  u8 is_tunnel_ipv6;
+  u8 tunnel_src_address[16];
+  u8 tunnel_dst_address[16];
+};
+
+/** \brief Reply for IPsec: Add/delete Security Association Database entry
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+
+define ipsec_sad_add_del_entry_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief IPsec: Update Security Association keys
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+
+    @param sa_id - sa id
+
+    @param crypto_key_length - length of crypto_key in bytes
+    @param crypto_key - crypto keying material
+
+    @param integrity_key_length - length of integrity_key in bytes
+    @param integrity_key - integrity keying material
+*/
+
+define ipsec_sa_set_key
+{
+  u32 client_index;
+  u32 context;
+
+  u32 sa_id;
+
+  u8 crypto_key_length;
+  u8 crypto_key[128];
+
+  u8 integrity_key_length;
+  u8 integrity_key[128];
+};
+
+/** \brief Reply for IPsec: Update Security Association keys
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+
+define ipsec_sa_set_key_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief IKEv2: Add/delete profile
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+
+    @param name - IKEv2 profile name
+    @param is_add - Add IKEv2 profile if non-zero, else delete
+*/
+define ikev2_profile_add_del
+{
+  u32 client_index;
+  u32 context;
+
+  u8 name[64];
+  u8 is_add;
+};
+
+/** \brief Reply for IKEv2: Add/delete profile
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define ikev2_profile_add_del_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief IKEv2: Set IKEv2 profile authentication method
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+
+    @param name - IKEv2 profile name
+    @param auth_method - IKEv2 authentication method (shared-key-mic/rsa-sig)
+    @param is_hex - Authentication data in hex format if non-zero, else string
+    @param data_len - Authentication data length
+    @param data - Authentication data (for rsa-sig cert file path)
+*/
+define ikev2_profile_set_auth
+{
+  u32 client_index;
+  u32 context;
+
+  u8 name[64];
+  u8 auth_method;
+  u8 is_hex;
+  u32 data_len;
+  u8 data[0];
+};
+
+/** \brief Reply for IKEv2: Set IKEv2 profile authentication method
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define ikev2_profile_set_auth_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief IKEv2: Set IKEv2 profile local/remote identification
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+
+    @param name - IKEv2 profile name
+    @param is_local - Identification is local if non-zero, else remote
+    @param id_type - Identification type
+    @param data_len - Identification data length
+    @param data - Identification data
+*/
+define ikev2_profile_set_id
+{
+  u32 client_index;
+  u32 context;
+
+  u8 name[64];
+  u8 is_local;
+  u8 id_type;
+  u32 data_len;
+  u8 data[0];
+};
+
+/** \brief Reply for IKEv2:
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define ikev2_profile_set_id_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief IKEv2: Set IKEv2 profile traffic selector parameters
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+
+    @param name - IKEv2 profile name
+    @param is_local - Traffic selector is local if non-zero, else remote
+    @param proto - Traffic selector IP protocol (if zero not relevant)
+    @param start_port - The smallest port number allowed by traffic selector
+    @param end_port - The largest port number allowed by traffic selector
+    @param start_addr - The smallest address included in traffic selector
+    @param end_addr - The largest address included in traffic selector
+*/
+define ikev2_profile_set_ts
+{
+  u32 client_index;
+  u32 context;
+
+  u8 name[64];
+  u8 is_local;
+  u8 proto;
+  u16 start_port;
+  u16 end_port;
+  u32 start_addr;
+  u32 end_addr;
+};
+
+/** \brief Reply for IKEv2: Set IKEv2 profile traffic selector parameters
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define ikev2_profile_set_ts_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief IKEv2: Set IKEv2 local RSA private key
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+
+    @param key_file - Key file absolute path
+*/
+define ikev2_set_local_key
+{
+  u32 client_index;
+  u32 context;
+
+  u8 key_file[256];
+};
+
+/** \brief Reply for IKEv2: Set IKEv2 local key
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define ikev2_set_local_key_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Tell client about a DHCP completion event
+    @param client_index - opaque cookie to identify the sender
+    @param pid - client pid registered to receive notification
+    @param is_ipv6 - if non-zero the address is ipv6, else ipv4
+    @param host_address - Host IP address
+    @param router_address - Router IP address
+    @param host_mac - Host MAC address
+*/
+define dhcp_compl_event
+{
+  u32 client_index;
+  u32 pid;
+  u8 hostname[64];
+  u8 is_ipv6;
+  u8 host_address[16];
+  u8 router_address[16];
+  u8 host_mac[6];
+};
+
+/** \brief cop: enable/disable junk filtration features on an interface
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_inded - desired interface
+    @param enable_disable - 1 => enable, 0 => disable
+*/
+
+define cop_interface_enable_disable
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u8 enable_disable;
+};
+
+/** \brief cop: interface enable/disable junk filtration reply
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+
+define cop_interface_enable_disable_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief cop: enable/disable whitelist filtration features on an interface
+    Note: the supplied fib_id must match in order to remove the feature!
+    
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - interface handle, physical interfaces only
+    @param fib_id - fib identifier for the whitelist / blacklist fib
+    @param ip4 - 1 => enable ip4 filtration, 0=> disable ip4 filtration
+    @param ip6 - 1 => enable ip6 filtration, 0=> disable ip6 filtration
+    @param default_cop -  1 => enable non-ip4, non-ip6 filtration 0=> disable it
+*/
+
+define cop_whitelist_enable_disable
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u32 fib_id;
+  u8 ip4;
+  u8 ip6;
+  u8 default_cop;
+};
+
+/** \brief cop: interface enable/disable junk filtration reply
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+
+define cop_whitelist_enable_disable_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief get_node_graph - get a copy of the vpp node graph
+    including the current set of graph arcs.
+
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+*/
+
+define get_node_graph
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief get_node_graph_reply
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+    @param reply_in_shmem - result from vlib_node_serialize, in shared
+    memory. Process with vlib_node_unserialize, remember to switch
+    heaps and free the result.
+*/
+
+define get_node_graph_reply
+{
+  u32 context;
+  i32 retval;
+  u64 reply_in_shmem;
+};
+
+/** \brief IOAM enable : Enable in-band OAM
+    @param id - profile id
+    @param seqno - To enable Seqno Processing
+    @param analyse - Enabling analysis of iOAM at decap node 
+    @param pow_enable - Proof of Work enabled or not flag
+    @param trace_enable - iOAM Trace enabled or not flag
+*/
+define ioam_enable
+{
+  u32 client_index;
+  u32 context;
+  u16 id;
+  u8 seqno;
+  u8 analyse;
+  u8 pot_enable;
+  u8 trace_enable;
+  u32 node_id;
+};
+
+/** \brief iOAM Trace profile add / del response
+    @param context - sender context, to match reply w/ request
+    @param retval - return value for request
+*/
+define ioam_enable_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief iOAM disable
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param index - MAP Domain index
+*/
+define ioam_disable
+{
+  u32 client_index;
+  u32 context;
+  u16 id;
+};
+
+/** \brief iOAM disable response
+    @param context - sender context, to match reply w/ request
+    @param retval - return value for request
+*/
+define ioam_disable_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Create host-interface
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param host_if_name - interface name
+    @param hw_addr - interface MAC
+    @param use_random_hw_addr - use random generated MAC
+*/
+define af_packet_create
+{
+  u32 client_index;
+  u32 context;
+
+  u8 host_if_name[64];
+  u8 hw_addr[6];
+  u8 use_random_hw_addr;
+};
+
+/** \brief Create host-interface response
+    @param context - sender context, to match reply w/ request
+    @param retval - return value for request
+*/
+define af_packet_create_reply
+{
+  u32 context;
+  i32 retval;
+  u32 sw_if_index;
+};
+
+/** \brief Delete host-interface
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param host_if_name - interface name
+*/
+define af_packet_delete
+{
+  u32 client_index;
+  u32 context;
+
+  u8 host_if_name[64];
+};
+
+/** \brief Delete host-interface response
+    @param context - sender context, to match reply w/ request
+    @param retval - return value for request
+*/
+define af_packet_delete_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Add/del policer
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add policer if non-zero, else delete
+    @param name - policer name
+    @param cir - CIR
+    @param eir - EIR
+    @param cb - Committed Burst
+    @param eb - Excess or Peak Burst
+    @param rate_type - rate type
+    @param round_type - rounding type
+    @param type - policer algorithm
+    @param color_aware - 0=color-blind, 1=color-aware
+    @param conform_action_type - conform action type
+    @param conform_dscp - DSCP for conform mar-and-transmit action
+    @param exceed_action_type - exceed action type
+    @param exceed_dscp - DSCP for exceed mar-and-transmit action
+    @param violate_action_type - violate action type
+    @param violate_dscp - DSCP for violate mar-and-transmit action
+*/
+define policer_add_del
+{
+  u32 client_index;
+  u32 context;
+
+  u8 is_add;
+  u8 name[64];
+  u32 cir;
+  u32 eir;
+  u64 cb;
+  u64 eb;
+  u8 rate_type;
+  u8 round_type;
+  u8 type;
+  u8 color_aware;
+  u8 conform_action_type;
+  u8 conform_dscp;
+  u8 exceed_action_type;
+  u8 exceed_dscp;
+  u8 violate_action_type;
+  u8 violate_dscp;
+};
+
+/** \brief Add/del policer response
+    @param context - sender context, to match reply w/ request
+    @param retval - return value for request
+    @param policer_index - for add, returned index of the new policer
+*/
+define policer_add_del_reply
+{
+  u32 context;
+  i32 retval;
+  u32 policer_index;
+};
+
+/** \brief Get list of policers
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param match_name_valid - if 0 request all policers otherwise use match_name
+    @param match_name - policer name
+*/
+define policer_dump
+{
+  u32 client_index;
+  u32 context;
+
+  u8 match_name_valid;
+  u8 match_name[64];
+};
+
+/** \brief Policer operational state response.
+    @param context - sender context, to match reply w/ request
+    @param name - policer name
+    @param cir - CIR
+    @param eir - EIR
+    @param cb - Committed Burst
+    @param eb - Excess or Peak Burst
+    @param rate_type - rate type
+    @param round_type - rounding type
+    @param type - policer algorithm
+    @param conform_action_type - conform action type
+    @param conform_dscp - DSCP for conform mar-and-transmit action
+    @param exceed_action_type - exceed action type
+    @param exceed_dscp - DSCP for exceed mar-and-transmit action
+    @param violate_action_type - violate action type
+    @param violate_dscp - DSCP for violate mar-and-transmit action
+    @param single_rate - 1 = single rate policer, 0 = two rate policer
+    @param color_aware - for hierarchical policing
+    @param scale - power-of-2 shift amount for lower rates
+    @param cir_tokens_per_period - number of tokens for each period
+    @param pir_tokens_per_period - number of tokens for each period for 2-rate policer
+    @param current_limit - current limit
+    @param current_bucket - current bucket
+    @param extended_limit - extended limit
+    @param extended_bucket - extended bucket
+    @param last_update_time - last update time
+*/
+define policer_details
+{
+  u32 context;
+
+  u8 name[64];
+  u32 cir;
+  u32 eir;
+  u64 cb;
+  u64 eb;
+  u8 rate_type;
+  u8 round_type;
+  u8 type;
+  u8 conform_action_type;
+  u8 conform_dscp;
+  u8 exceed_action_type;
+  u8 exceed_dscp;
+  u8 violate_action_type;
+  u8 violate_dscp;
+  u8 single_rate;
+  u8 color_aware;
+  u32 scale;
+  u32 cir_tokens_per_period;
+  u32 pir_tokens_per_period;
+  u32 current_limit;
+  u32 current_bucket;
+  u32 extended_limit;
+  u32 extended_bucket;
+  u64 last_update_time;
+};
+
+/** \brief Set/unset policer classify interface
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - interface to set/unset policer classify
+    @param ip4_table_index - ip4 classify table index (~0 for skip)
+    @param ip6_table_index - ip6 classify table index (~0 for skip)
+    @param l2_table_index  -  l2 classify table index (~0 for skip)
+    @param is_add - Set if non-zero, else unset
+    Note: User is recommeneded to use just one valid table_index per call.
+          (ip4_table_index, ip6_table_index, or l2_table_index)
+*/
+define policer_classify_set_interface
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u32 ip4_table_index;
+  u32 ip6_table_index;
+  u32 l2_table_index;
+  u8 is_add;
+};
+
+/** \brief Set/unset policer classify interface response
+    @param context - sender context, to match reply w/ request
+    @param retval - return value for request
+*/
+define policer_classify_set_interface_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Get list of policer classify interfaces and tables
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param type - classify table type
+*/
+define policer_classify_dump
+{
+  u32 client_index;
+  u32 context;
+  u8 type;
+};
+
+/** \brief Policer iclassify operational state response.
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - software interface index
+    @param table_index - classify table index
+*/
+define policer_classify_details
+{
+  u32 context;
+  u32 sw_if_index;
+  u32 table_index;
+};
+
+/** \brief Create netmap
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param netmap_if_name - interface name
+    @param hw_addr - interface MAC
+    @param use_random_hw_addr - use random generated MAC
+    @param is_pipe - is pipe
+    @param is_master - 0=slave, 1=master
+*/
+define netmap_create
+{
+  u32 client_index;
+  u32 context;
+
+  u8 netmap_if_name[64];
+  u8 hw_addr[6];
+  u8 use_random_hw_addr;
+  u8 is_pipe;
+  u8 is_master;
+};
+
+/** \brief Create netmap response
+    @param context - sender context, to match reply w/ request
+    @param retval - return value for request
+*/
+define netmap_create_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Delete netmap
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param netmap_if_name - interface name
+*/
+define netmap_delete
+{
+  u32 client_index;
+  u32 context;
+
+  u8 netmap_if_name[64];
+};
+
+/** \brief Delete netmap response
+    @param context - sender context, to match reply w/ request
+    @param retval - return value for request
+*/
+define netmap_delete_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Classify get table IDs request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+*/
+define classify_table_ids
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief Reply for classify get table IDs request
+    @param context - sender context which was passed in the request
+    @param count - number of ids returned in response
+    @param ids - array of classify table ids
+*/
+define classify_table_ids_reply
+{
+  u32 context;
+  i32 retval;
+  u32 count;
+  u32 ids[count];
+};
+
+/** \brief Classify table ids by interface index request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - index of the interface
+*/
+define classify_table_by_interface
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+};
+
+/** \brief Reply for classify table id by interface index request
+    @param context - sender context which was passed in the request
+    @param count - number of ids returned in response
+    @param sw_if_index - index of the interface
+    @param l2_table_id - l2 classify table index
+    @param ip4_table_id - ip4 classify table index
+    @param ip6_table_id - ip6 classify table index
+*/
+define classify_table_by_interface_reply
+{
+  u32 context;
+  i32 retval;
+  u32 sw_if_index;
+  u32 l2_table_id;
+  u32 ip4_table_id;
+  u32 ip6_table_id;
+};
+
+/** \brief Classify table info
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param table_id - classify table index
+*/
+define classify_table_info
+{
+  u32 client_index;
+  u32 context;
+  u32 table_id;
+};
+
+/** \brief Reply for classify table info request
+    @param context - sender context which was passed in the request
+    @param count - number of ids returned in response
+    @param table_id - classify table index
+    @param nbuckets - number of buckets when adding a table
+    @param match_n_vectors - number of match vectors
+    @param skip_n_vectors - number of skip_n_vectors
+    @param active_sessions - number of sessions (active entries)
+    @param next_table_index - index of next table
+    @param miss_next_index - index of miss table
+    @param mask[] - match mask
+*/
+define classify_table_info_reply
+{
+  u32 context;
+  i32 retval;
+  u32 table_id;
+  u32 nbuckets;
+  u32 match_n_vectors;
+  u32 skip_n_vectors;
+  u32 active_sessions;
+  u32 next_table_index;
+  u32 miss_next_index;
+  u32 mask_length;
+  u8 mask[mask_length];
+};
+
+/** \brief Classify sessions dump request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param table_id - classify table index
+*/
+define classify_session_dump
+{
+  u32 client_index;
+  u32 context;
+  u32 table_id;
+};
+
+/** \brief Reply for classify table session dump request
+    @param context - sender context which was passed in the request
+    @param count - number of ids returned in response
+    @param table_id - classify table index
+    @param hit_next_index - hit_next_index of session
+    @param opaque_index - for add, opaque_index of session
+    @param advance - advance value of session
+    @param match[] - match value for session
+*/
+define classify_session_details
+{
+  u32 context;
+  i32 retval;
+  u32 table_id;
+  u32 hit_next_index;
+  i32 advance;
+  u32 opaque_index;
+  u32 match_length;
+  u8 match[match_length];
+};
+
+/** \brief Configure IPFIX exporter process request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param collector_address - address of IPFIX collector
+    @param collector_port - port of IPFIX collector
+    @param src_address - address of IPFIX exporter
+    @param vrf_id - VRF / fib table ID
+    @param path_mtu - Path MTU between exporter and collector
+    @param template_interval - number of seconds after which to resend template
+    @param udp_checksum - UDP checksum calculation enable flag
+*/
+define set_ipfix_exporter
+{
+  u32 client_index;
+  u32 context;
+  u8 collector_address[16];
+  u16 collector_port;
+  u8 src_address[16];
+  u32 vrf_id;
+  u32 path_mtu;
+  u32 template_interval;
+  u8 udp_checksum;
+};
+
+/** \brief Reply to IPFIX exporter configure request
+    @param context - sender context which was passed in the request
+*/
+define set_ipfix_exporter_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief IPFIX exporter dump request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+*/
+define ipfix_exporter_dump
+{
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief Reply to IPFIX exporter dump request
+    @param context - sender context which was passed in the request
+    @param collector_address - address of IPFIX collector
+    @param collector_port - port of IPFIX collector
+    @param src_address - address of IPFIX exporter
+    @param fib_index - fib table index
+    @param path_mtu - Path MTU between exporter and collector
+    @param template_interval - number of seconds after which to resend template
+    @param udp_checksum - UDP checksum calculation enable flag
+*/
+define ipfix_exporter_details
+{
+  u32 context;
+  u8 collector_address[16];
+  u16 collector_port;
+  u8 src_address[16];
+  u32 vrf_id;
+  u32 path_mtu;
+  u32 template_interval;
+  u8 udp_checksum;
+};
+
+/** \brief IPFIX classify stream configure request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param domain_id - domain ID reported in IPFIX messages for classify stream
+    @param src_port - source port of UDP session for classify stream
+*/
+define set_ipfix_classify_stream {
+    u32 client_index;
+    u32 context;
+    u32 domain_id;
+    u16 src_port;
+};
+
+/** \brief IPFIX classify stream configure response
+    @param context - sender context, to match reply w/ request
+    @param retval - return value for request
+*/
+define set_ipfix_classify_stream_reply {
+    u32 context;
+    i32 retval;
+};
+
+/** \brief IPFIX classify stream dump request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+*/
+define ipfix_classify_stream_dump {
+    u32 client_index;
+    u32 context;
+};
+
+/** \brief Reply to IPFIX classify stream dump request
+    @param context - sender context, to match reply w/ request
+    @param domain_id - domain ID reported in IPFIX messages for classify stream
+    @param src_port - source port of UDP session for classify stream
+*/
+define ipfix_classify_stream_details {
+    u32 context;
+    u32 domain_id;
+    u16 src_port;
+};
+
+/** \brief IPFIX add or delete classifier table request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param table_id - classifier table ID
+    @param ip_version - version of IP used in the classifier table
+    @param transport_protocol - transport protocol used in the classifier table or 255 for unspecified
+*/
+define ipfix_classify_table_add_del {
+    u32 client_index;
+    u32 context;
+    u32 table_id;
+    u8 ip_version;
+    u8 transport_protocol;
+    u8 is_add;
+};
+
+/** \brief IPFIX add classifier table response
+    @param context - sender context which was passed in the request
+*/
+define ipfix_classify_table_add_del_reply {
+    u32 context;
+    i32 retval;
+};
+
+/** \brief IPFIX classify tables dump request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+*/
+define ipfix_classify_table_dump {
+    u32 client_index;
+    u32 context;
+};
+
+/** \brief Reply to IPFIX classify tables dump request
+    @param context - sender context, to match reply w/ request
+    @param table_id - classifier table ID
+    @param ip_version - version of IP used in the classifier table
+    @param transport_protocol - transport protocol used in the classifier table or 255 for unspecified
+*/
+define ipfix_classify_table_details {
+    u32 context;
+    u32 table_id;
+    u8 ip_version;
+    u8 transport_protocol;
+};
+
+/** \brief Set/unset flow classify interface
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - interface to set/unset flow classify
+    @param ip4_table_index - ip4 classify table index (~0 for skip)
+    @param ip6_table_index - ip6 classify table index (~0 for skip)
+    @param l2_table_index  -  l2 classify table index (~0 for skip)
+    @param is_add - Set if non-zero, else unset
+    Note: User is recommeneded to use just one valid table_index per call.
+          (ip4_table_index, ip6_table_index, or l2_table_index)
+*/
+define flow_classify_set_interface {
+    u32 client_index;
+    u32 context;
+    u32 sw_if_index;
+    u32 ip4_table_index;
+    u32 ip6_table_index;
+    u8  is_add;
+};
+
+/** \brief Set/unset flow classify interface response
+    @param context - sender context, to match reply w/ request
+    @param retval - return value for request
+*/
+define flow_classify_set_interface_reply {
+    u32 context;
+    i32 retval;
+};
+
+/** \brief Get list of flow classify interfaces and tables
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param type - classify table type
+*/
+define flow_classify_dump {
+    u32 client_index;
+    u32 context;
+    u8 type;
+};
+
+/** \brief Flow classify operational state response.
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - software interface index
+    @param table_index - classify table index
+*/
+define flow_classify_details {
+    u32 context;
+    u32 sw_if_index;
+    u32 table_index;
+};
+
+/** \brief Query relative index via node names
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param node_name - name of node to find relative index from
+    @param next_name - next node from node_name to find relative index of
+*/
+define get_next_index
+{
+  u32 client_index;
+  u32 context;
+  u8 node_name[64];
+  u8 next_name[64];
+};
+
+/** \brief Reply for get next node index
+    @param context - sender context which was passed in the request
+    @param retval - return value
+    @param next_index - index of the next_node
+*/
+define get_next_index_reply
+{
+  u32 context;
+  i32 retval;
+  u32 next_index;
+};
+
+/** \brief PacketGenerator create interface request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param interface_id - interface index
+*/
+define pg_create_interface
+{
+  u32 client_index;
+  u32 context;
+  u32 interface_id;
+};
+
+/** \brief PacketGenerator create interface response
+    @param context - sender context, to match reply w/ request
+    @param retval - return value for request
+*/
+define pg_create_interface_reply
+{
+  u32 context;
+  i32 retval;
+  u32 sw_if_index;
+};
+
+/** \brief PacketGenerator capture packets on given interface request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param interface_id - pg interface index
+    @param is_enabled - 1 if enabling streams, 0 if disabling
+    @param count - number of packets to be captured
+    @param pcap_file - pacp file name to store captured packets
+*/
+define pg_capture
+{
+  u32 client_index;
+  u32 context;
+  u32 interface_id;
+  u8 is_enabled;
+  u32 count;
+  u32 pcap_name_length;
+  u8 pcap_file_name[pcap_name_length];
+};
+
+/** \brief PacketGenerator capture packets response
+    @param context - sender context, to match reply w/ request
+    @param retval - return value for request
+*/
+define pg_capture_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Enable / disable packet generator request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_enabled - 1 if enabling streams, 0 if disabling
+    @param stream - stream name to be enable/disabled, if not specified handle all streams
+*/
+define pg_enable_disable
+{
+  u32 client_index;
+  u32 context;
+  u8 is_enabled;
+  u32 stream_name_length;
+  u8 stream_name[stream_name_length];
+};
+
+/** \brief Reply for enable / disable packet generator
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define pg_enable_disable_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Configure IP source and L4 port-range check
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_ip6 - 1 if source address type is IPv6
+    @param is_add - 1 if add, 0 if delete
+    @param mask_length - mask length for address entry
+    @param address - array of address bytes
+    @param number_of_ranges - length of low_port and high_port arrays (must match)
+    @param low_ports[32] - up to 32 low end of port range entries (must have corresponding high_ports entry)
+    @param high_ports[32] - up to 32 high end of port range entries (must have corresponding low_ports entry)
+    @param vrf_id - fib table/vrf id to associate the source and port-range check with
+    @note To specify a single port set low_port and high_port entry the same
+*/
+define ip_source_and_port_range_check_add_del
+{
+  u32 client_index;
+  u32 context;
+  u8 is_ipv6;
+  u8 is_add;
+  u8 mask_length;
+  u8 address[16];
+  u8 number_of_ranges;
+  u16 low_ports[32];
+  u16 high_ports[32];
+  u32 vrf_id;
+};
+
+/** \brief Configure IP source and L4 port-range check reply
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define ip_source_and_port_range_check_add_del_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Set interface source and L4 port-range request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param interface_id - interface index
+    @param tcp_vrf_id - VRF associated with source and TCP port-range check
+    @param udp_vrf_id - VRF associated with source and TCP port-range check
+*/
+define ip_source_and_port_range_check_interface_add_del
+{
+  u32 client_index;
+  u32 context;
+  u8 is_add;
+  u32 sw_if_index;
+  u32 tcp_in_vrf_id;
+  u32 tcp_out_vrf_id;
+  u32 udp_in_vrf_id;
+  u32 udp_out_vrf_id;
+};
+
+/** \brief Set interface source and L4 port-range response
+    @param context - sender context, to match reply w/ request
+    @param retval - return value for request
+*/
+define ip_source_and_port_range_check_interface_add_del_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Add / del ipsec gre tunnel request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param local_sa_id - local SA id
+    @param remote_sa_id - remote SA id
+    @param is_add - 1 if adding the tunnel, 0 if deleting
+    @param src_address - tunnel source address
+    @param dst_address - tunnel destination address
+*/
+define ipsec_gre_add_del_tunnel {
+    u32 client_index;
+    u32 context;
+    u32 local_sa_id;
+    u32 remote_sa_id;
+    u8 is_add;
+    u8 src_address[4];
+    u8 dst_address[4];
+};
+
+/** \brief Reply for add / del ipsec gre tunnel request
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+    @param sw_if_index - software index of the new ipsec gre tunnel
+*/
+define ipsec_gre_add_del_tunnel_reply {
+    u32 context;
+    i32 retval;
+    u32 sw_if_index;
+};
+
+/** \brief Dump ipsec gre tunnel table
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param tunnel_index - gre tunnel identifier or -1 in case of all tunnels
+*/
+define ipsec_gre_tunnel_dump {
+    u32 client_index;
+    u32 context;
+    u32 sw_if_index;
+};
+
+/** \brief mpls gre tunnel operational state response
+    @param context - returned sender context, to match reply w/ request
+    @param sw_if_index - software index of the ipsec gre tunnel
+    @param local_sa_id - local SA id
+    @param remote_sa_id - remote SA id
+    @param src_address - tunnel source address
+    @param dst_address - tunnel destination address
+*/
+define ipsec_gre_tunnel_details {
+    u32 context;
+    u32 sw_if_index;
+    u32 local_sa_id;
+    u32 remote_sa_id;
+    u8 src_address[4];
+    u8 dst_address[4];
+};
+
+/** \brief Delete sub interface request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - sw index of the interface that was created by create_subif
+*/
+define delete_subif {
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+};
+
+/** \brief Delete sub interface response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define delete_subif_reply {
+  u32 context;
+  i32 retval;
+};
+
+/** \brief DPDK interface HQoS pipe profile set request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - the interface
+    @param subport - subport ID
+    @param pipe - pipe ID within its subport
+    @param profile - pipe profile ID
+*/
+define sw_interface_set_dpdk_hqos_pipe {
+    u32 client_index;
+    u32 context;
+    u32 sw_if_index;
+    u32 subport;
+    u32 pipe;
+    u32 profile;
+};
+
+/** \brief DPDK interface HQoS pipe profile set reply
+    @param context - sender context, to match reply w/ request
+    @param retval - request return code
+*/
+define sw_interface_set_dpdk_hqos_pipe_reply {
+    u32 context;
+    i32 retval;
+};
+
+/** \brief DPDK interface HQoS subport parameters set request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - the interface
+    @param subport - subport ID
+    @param tb_rate - subport token bucket rate (measured in bytes/second)
+    @param tb_size - subport token bucket size (measured in credits)
+    @param tc_rate - subport traffic class 0 .. 3 rates (measured in bytes/second)
+    @param tc_period - enforcement period for rates (measured in milliseconds)
+*/
+define sw_interface_set_dpdk_hqos_subport {
+    u32 client_index;
+    u32 context;
+    u32 sw_if_index;
+    u32 subport;
+    u32 tb_rate;
+    u32 tb_size;
+    u32 tc_rate[4];
+    u32 tc_period;
+};
+
+/** \brief DPDK interface HQoS subport parameters set reply
+    @param context - sender context, to match reply w/ request
+    @param retval - request return code
+*/
+define sw_interface_set_dpdk_hqos_subport_reply {
+    u32 context;
+    i32 retval;
+};
+
+/** \brief DPDK interface HQoS tctbl entry set request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - the interface
+    @param entry - entry index ID
+    @param tc - traffic class (0 .. 3)
+    @param queue - traffic class queue (0 .. 3)
+*/
+define sw_interface_set_dpdk_hqos_tctbl {
+    u32 client_index;
+    u32 context;
+    u32 sw_if_index;
+    u32 entry;
+    u32 tc;
+    u32 queue;
+};
+
+/** \brief DPDK interface HQoS tctbl entry set reply
+    @param context - sender context, to match reply w/ request
+    @param retval - request return code
+*/
+define sw_interface_set_dpdk_hqos_tctbl_reply {
+    u32 context;
+    i32 retval;
+};
+
+/** \brief L2 interface pbb tag rewrite configure request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - interface the operation is applied to
+    @param vtr_op - Choose from l2_vtr_op_t enum values
+    @param inner_tag - needed for translate_qinq vtr op only
+    @param outer_tag - needed for translate_qinq vtr op only 
+    @param b_dmac - B-tag remote mac address, needed for any push or translate_qinq vtr op
+    @param b_smac - B-tag local mac address, needed for any push or translate qinq vtr op
+    @param b_vlanid - B-tag vlanid, needed for any push or translate qinq vtr op
+    @param i_sid - I-tag service id, needed for any push or translate qinq vtr op
+*/
+define l2_interface_pbb_tag_rewrite
+{
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u32 vtr_op;
+  u16 outer_tag;
+  u8  b_dmac[6];
+  u8  b_smac[6];
+  u16 b_vlanid;
+  u32 i_sid;
+};
+
+/** \brief L2 interface pbb tag rewrite response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define l2_interface_pbb_tag_rewrite_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Punt traffic to the host
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param is_add - add punt if non-zero, else delete
+    @param ipv - L3 protocol 4 - IPv4, 6 - IPv6, ~0 - All
+    @param l4_protocol - L4 protocol to be punted, only UDP (0x11) is supported
+    @param l4_port - TCP/UDP port to be punted
+*/
+define punt {
+    u32 client_index;
+    u32 context;
+    u8 is_add;
+    u8 ipv;
+    u8 l4_protocol;
+    u16 l4_port;
+};
+
+/** \brief Reply to the punt request
+    @param context - sender context which was passed in the request
+    @param retval - return code of punt request
+*/
+define punt_reply
+{
+    u32 context;
+    i32 retval;
+};
+
+/** \brief Dump ipsec policy database data
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param spd_id - SPD instance id
+    @param sa_id - SA id, optional, set to ~0 to see all policies in SPD
+*/
+define ipsec_spd_dump {
+    u32 client_index;
+    u32 context;
+    u32 spd_id;
+    u32 sa_id;
+};
+
+/** \brief IPsec policy database response
+    @param context - sender context which was passed in the request
+    @param spd_id - SPD instance id
+    @param priority - numeric value to control policy evaluation order
+    @param is_outbound - [1|0] to indicate if direction is [out|in]bound
+    @param is_ipv6 - [1|0] to indicate if address family is ipv[6|4]
+    @param local_start_addr - first address in local traffic selector range
+    @param local_stop_addr - last address in local traffic selector range
+    @param local_start_port - first port in local traffic selector range
+    @param local_stop_port - last port in local traffic selector range
+    @param remote_start_addr - first address in remote traffic selector range
+    @param remote_stop_addr - last address in remote traffic selector range
+    @param remote_start_port - first port in remote traffic selector range
+    @param remote_stop_port - last port in remote traffic selector range
+    @param protocol - traffic selector protocol
+    @param policy - policy action
+    @param sa_id - SA id
+    @param bytes - byte count of packets matching this policy
+    @param packets - count of packets matching this policy
+*/
+
+define ipsec_spd_details {
+    u32 context;
+    u32 spd_id;
+    i32 priority;
+    u8 is_outbound;
+    u8 is_ipv6;
+    u8 local_start_addr[16];
+    u8 local_stop_addr[16];
+    u16 local_start_port;
+    u16 local_stop_port;
+    u8 remote_start_addr[16];
+    u8 remote_stop_addr[16];
+    u16 remote_start_port;
+    u16 remote_stop_port;
+    u8 protocol;
+    u8 policy;
+    u32 sa_id;
+    u64 bytes;
+    u64 packets;
+};
+
+/** \brief Feature path enable/disable request
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - the interface
+    @param enable - 1 = on, 0 = off
+*/
+define feature_enable_disable {
+    u32 client_index;
+    u32 context;
+    u32 sw_if_index;
+    u8 enable;
+    u8 arc_name[64];
+    u8 feature_name[64];
+};
+
+/** \brief Reply to the eature path enable/disable request
+    @param context - sender context which was passed in the request
+    @param retval - return code for the request
+*/
+define feature_enable_disable_reply
+{
+    u32 context;
+    i32 retval;
+};
+
+/** \brief Configure BFD feature
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param slow_timer - slow timer (seconds)
+    @param min_tx - desired min tx interval
+    @param min_rx - desired min rx interval
+    @param detect_mult - desired detection multiplier
+*/
+define bfd_set_config {
+  u32 client_index;
+  u32 context;
+  u32 slow_timer;
+  u32 min_tx;
+  u32 min_rx;
+  u8 detect_mult;
+};
+
+/** \brief Configure BFD feature response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define bfd_set_config_reply {
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Get BFD configuration
+*/
+define bfd_get_config {
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief Get BFD configuration response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+    @param slow_timer - slow timer (seconds)
+    @param min_tx - desired min tx interval
+    @param min_rx - desired min rx interval
+    @param detect_mult - desired detection multiplier
+*/
+define bfd_get_config_reply {
+  u32 client_index;
+  u32 context;
+  u32 slow_timer;
+  u32 min_tx;
+  u32 min_rx;
+  u8 detect_mult;
+};
+
+/** \brief Add UDP BFD session on interface
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - sw index of the interface
+    @param desired_min_tx - desired min transmit interval (microseconds)
+    @param required_min_rx - required min receive interval (microseconds)
+    @param detect_mult - detect multiplier (# of packets missed between connection goes down)
+    @param local_addr - local address
+    @param peer_addr - peer address
+    @param is_ipv6 - local_addr, peer_addr are IPv6 if non-zero, otherwise IPv4
+*/
+define bfd_udp_add {
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u32 desired_min_tx;
+  u32 required_min_rx;
+  u8 local_addr[16];
+  u8 peer_addr[16];
+  u8 is_ipv6;
+  u8 detect_mult;
+};
+
+/** \brief Add UDP BFD session response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+    @param bs_index - index of the session created
+*/
+define bfd_udp_add_reply {
+  u32 context;
+  i32 retval;
+  u32 bs_index;
+};
+
+/** \brief Delete UDP BFD session on interface
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param sw_if_index - sw index of the interface
+    @param local_addr - local address
+    @param peer_addr - peer address
+    @param is_ipv6 - local_addr, peer_addr are IPv6 if non-zero, otherwise IPv4
+*/
+define bfd_udp_del {
+  u32 client_index;
+  u32 context;
+  u32 sw_if_index;
+  u8 local_addr[16];
+  u8 peer_addr[16];
+  u8 is_ipv6;
+};
+
+/** \brief Delete UDP BFD session response
+    @param context - sender context, to match reply w/ request
+    @param retval - return code for the request
+*/
+define bfd_udp_del_reply {
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Get all BFD sessions
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+*/
+define bfd_udp_session_dump {
+  u32 client_index;
+  u32 context;
+};
+
+/** \brief BFD session details structure
+    @param context - sender context, to match reply w/ request
+    @param bs_index - index of the session
+    @param sw_if_index - sw index of the interface
+    @param local_addr - local address
+    @param peer_addr - peer address
+    @param is_ipv6 - local_addr, peer_addr are IPv6 if non-zero, otherwise IPv4
+    @param state - session state
+*/
+define bfd_udp_session_details {
+  u32 context;
+  u32 bs_index; 
+  u32 sw_if_index;
+  u8 local_addr[16];
+  u8 peer_addr[16];
+  u8 is_ipv6;
+  u8 state;
+};
+
+/** \brief Set flags of BFD session
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param bs_index - index of the bfd session to set flags on
+    @param admin_up_down - set the admin state, 1 = up, 0 = down
+*/
+define bfd_session_set_flags {
+  u32 client_index;
+  u32 context;
+  u32 bs_index;
+  u8 admin_up_down;
+};
+
+/** \brief Reply to bfd_session_set_flags 
+    @param context - sender context which was passed in the request
+    @param retval - return code of the set flags request
+*/
+define bfd_session_set_flags_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/** \brief Register for BFD events
+    @param client_index - opaque cookie to identify the sender
+    @param context - sender context, to match reply w/ request
+    @param enable_disable - 1 => register for events, 0 => cancel registration
+    @param pid - sender's pid
+*/
+define want_bfd_events
+{
+  u32 client_index;
+  u32 context;
+  u32 enable_disable;
+  u32 pid;
+};
+
+/** \brief Reply for BFD events registration
+    @param context - returned sender context, to match reply w/ request
+    @param retval - return code
+*/
+define want_bfd_events_reply
+{
+  u32 context;
+  i32 retval;
+};
+
+/*
+ * Local Variables:
+ * eval: (c-set-style "gnu")
+ * End:
+ */

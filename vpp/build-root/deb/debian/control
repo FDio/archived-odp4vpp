@@ -1,0 +1,68 @@
+Source: vpp
+Section: net
+Priority: extra
+Maintainer: Cisco OpenVPP Packaging Team <bogus.address@cisco.com>
+Build-Depends: debhelper (>= 9), dkms, dh-systemd, chrpath
+Standards-Version: 3.9.4
+
+Package: vpp
+Architecture: any
+Depends: vpp-lib (= ${source:Version}), ${shlibs:Depends}, ${misc:Depends}, ${python:Depends}
+Description: Vector Packet Processing--executables
+ This package provides VPP executables: vpp, vpp_api_test, vpp_json_test
+ vpp - the vector packet engine
+ vpp_api_test - vector packet engine API test tool
+ vpp_json_test - vector packet engine JSON test tool
+
+Package: vpp-dbg
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Vector Packet Processing--debug symbols
+
+Package: vpp-dev
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Vector Packet Processing--development support
+ This package contains development support files for the VPP libraries
+ .
+
+Package: vpp-dpdk-dev
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Vector Packet Processing--development support
+ This package contains dpdk header files which match the dpdk version
+ compiled into the vpp executable
+ .
+
+Package: vpp-lib
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Vector Packet Processing--runtime libraries
+ This package contains the VPP shared libraries, including:
+ .
+ vppinfra - foundation library supporting vectors, hashes, bitmaps, pools, and string formatting.
+ dpdk - DPDK library
+ svm - vm library
+ vlib - vector processing library
+ vlib-api - binary API library
+ vnet -  network stack library
+
+Package: vpp-plugins
+Architecture: any
+Depends: vpp (= ${source:Version}), ${shlibs:Depends}, ${misc:Depends}
+Description: Vector Packet Processing--runtime plugins
+ This package contains VPP plugins
+ .
+
+Package: vpp-dpdk-dkms
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: DPDK 2.1 igb_uio_driver
+ This package contains Linux kernel modules distributed with DPDK.
+
+Package: vpp-python-api
+Architecture: any
+Depends: ${python:Depends}, ${misc:Depends}, vpp (= ${source:Version})
+Description: VPP Python API bindings
+  This package contains VPP python api bindings
+  .
