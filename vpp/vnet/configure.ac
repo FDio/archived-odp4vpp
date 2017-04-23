@@ -27,6 +27,11 @@ AC_ARG_WITH(ipv6sr,
             [with_ipv6sr=0],
             [with_ipv6sr=1])
 
+AC_ARG_WITH(odplib,
+            AC_HELP_STRING([--with-odplib],[Use odplib]),
+            [with_odplib=1],
+            [with_odplib=0])
+
 AC_ARG_ENABLE(tests,
               AC_HELP_STRING([--enable-tests], [Build unit tests]),
               [enable_tests=1],
@@ -43,6 +48,9 @@ AC_SUBST(IPSEC,[-DIPSEC=${with_ipsec}])
 
 AM_CONDITIONAL(WITH_IPV6SR, test "$with_ipv6sr" = "1")
 AC_SUBST(IPV6SR,[-DIPV6SR=${with_ipv6sr}])
+
+AM_CONDITIONAL(WITH_ODPLIB, test "$with_odplib" = "1")
+AC_SUBST(ODPLIB,[-DODPLIB=${with_odplib}])
 
 AM_CONDITIONAL(ENABLE_TESTS, test "$enable_tests" = "1")
 

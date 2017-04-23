@@ -34,12 +34,17 @@ AC_ARG_WITH(ipv6sr,
             [with_ipv6sr=0],
             [with_ipv6sr=1])
 
+AC_ARG_WITH(odplib,
+            AC_HELP_STRING([--with-odplib],[Use odp]),
+            [with_odplib=1],
+            [with_odplib=0])
+
 AM_CONDITIONAL(WITH_DPDK, test "$with_dpdk" = "1")
 AM_CONDITIONAL(ENABLE_DPDK_SHARED, test "$enable_dpdk_shared" = "1")
 AC_SUBST(DPDK,["-DDPDK=${with_dpdk} -DDPDK_SHARED_LIB=${enable_dpdk_shared}"])
 AM_CONDITIONAL(WITH_DPDK_CRYPTO, test "$with_dpdk_crypto" = "1")
 AC_SUBST(DPDK_CRYPTO,[-DDPDK_CRYPTO=${with_dpdk_crypto}])
-
+AM_CONDITIONAL(WITH_ODPLIB, test "$with_odplib" = "1")
 
 AM_COND_IF(
 	[ENABLE_DPDK_SHARED],

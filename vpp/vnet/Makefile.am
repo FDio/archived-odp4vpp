@@ -784,6 +784,19 @@ libvnet_la_SOURCES +=				\
 nobase_include_HEADERS +=			\
   vnet/devices/netmap/netmap.h
 
+########################################
+# ODP interface
+########################################
+if WITH_ODPLIB
+libvnet_la_SOURCES +=                           \
+  vnet/devices/odp/odp_packet.c			\
+  vnet/devices/odp/device.c			\
+  vnet/devices/odp/node.c			\
+  vnet/devices/odp/cli.c
+
+nobase_include_HEADERS +=                       \
+  vnet/devices/odp/odp_packet.h
+endif
 
 ########################################
 # Driver feature graph arc support

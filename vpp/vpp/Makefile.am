@@ -100,6 +100,12 @@ vpp_LDADD += -lvnet
 
 vpp_LDADD += -lsvm -lsvmdb -lrt
 
+if WITH_ODPLIB
+vpp_LDFLAGS = -Wl,--whole-archive
+vpp_LDADD += $(ODP_LIBS)
+vpp_LDFLAGS += -Wl,--no-whole-archive
+endif
+
 vpp_LDADD += -lvnetplugin
 
 if WITH_DPDK

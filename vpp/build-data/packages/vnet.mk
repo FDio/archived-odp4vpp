@@ -16,6 +16,12 @@ vnet_LDFLAGS = $(call installed_libs_fn, 	\
     vlib					\
     vlib-api)
 
+#include ODP library only if ODP is being used.
+ifeq ($($(PLATFORM)_uses_odp),yes)
+vnet_CPPFLAGS += -I$($(PLATFORM)_odp_inc_dir)
+vnet_LDFLAGS += -L$($(PLATFORM)_odp_lib_dir)
+endif
+
 ifeq ($($(PLATFORM)_enable_tests),yes)
 vnet_configure_args += --enable-tests
 endif
