@@ -1,4 +1,4 @@
 [gerrit]
 host=gerrit.fd.io
 port=29418
-project=vpp
+project=odp4vpp
