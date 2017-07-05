@@ -13,6 +13,13 @@ vpp_configure_args += $(vpp_configure_args_$(PLATFORM))
 vpp_CPPFLAGS =
 vpp_LDFLAGS =
 
+#Include ODP library only if ODP is being used.
+ifeq ($($(PLATFORM)_uses_odp),yes)
+vpp_CPPFLAGS += -I$($(PLATFORM)_odp_inc_dir)
+vpp_LDFLAGS += -L$($(PLATFORM)_odp_lib_dir)
+export ODP_LIBS= $($(PLATFORM)_odp_libs)
+endif
+
 ifneq ($($(PLATFORM)_uses_dpdk),no)
 ifeq ($($(PLATFORM)_uses_external_dpdk),yes)
 vpp_CPPFLAGS += -I$($(PLATFORM)_dpdk_inc_dir)
