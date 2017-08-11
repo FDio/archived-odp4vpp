@@ -255,7 +255,7 @@ odp_packet_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
   int i;
   u32 n_rx_packets = 0;
   u32 thread_index = vlib_get_thread_index ();
-  odp_packet_main_t *om = &odp_packet_main;
+  odp_packet_main_t *om = odp_packet_main;
   odp_packet_if_t *oif;
 
   for (i = 0; i < vec_len (om->interfaces); i++)

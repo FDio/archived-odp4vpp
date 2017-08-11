@@ -14,6 +14,8 @@
 #include <vnet/plugin/plugin.h>
 #include <vpp/app/version.h>
 
+odp_packet_main_t *odp_packet_main;
+
 static u32
 odp_packet_eth_flag_change (vnet_main_t * vnm, vnet_hw_interface_t * hi,
 			    u32 flags)
@@ -146,7 +148,7 @@ u32
 odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
 		      u32 * sw_if_index, u32 mode)
 {
-  odp_packet_main_t *om = &odp_packet_main;
+  odp_packet_main_t *om = odp_packet_main;
   int ret = 0;
   odp_packet_if_t *oif = 0;
   u8 hw_addr[6];
@@ -240,7 +242,7 @@ u32
 odp_packet_delete_if (vlib_main_t * vm, u8 * host_if_name)
 {
   vnet_main_t *vnm = vnet_get_main ();
-  odp_packet_main_t *om = &odp_packet_main;
+  odp_packet_main_t *om = odp_packet_main;
   odp_packet_if_t *oif = 0;
   uword *p;
   vlib_thread_main_t *tm = vlib_get_thread_main ();
@@ -283,7 +285,7 @@ odp_packet_delete_if (vlib_main_t * vm, u8 * host_if_name)
 static clib_error_t *
 odp_packet_init (vlib_main_t * vm)
 {
-  odp_packet_main_t *om = &odp_packet_main;
+  odp_packet_main_t *om;
   vlib_thread_main_t *tm = vlib_get_thread_main ();
   vlib_thread_registration_t *tr;
   vlib_physmem_main_t *vpm = &vm->physmem_main;
@@ -291,24 +293,36 @@ odp_packet_init (vlib_main_t * vm)
   odp_platform_init_t platform_params;
   odp_pool_param_t params;
   odp_pool_capability_t capa;
-
-  memset (om, 0, sizeof (odp_packet_main_t));
-  om->input_cpu_first_index = 0;
-  om->input_cpu_count = 1;
-  om->if_count = 0;
+  odp_shm_t shm;
+  odp_instance_t instance;
 
   memset (&platform_params, 0, sizeof (platform_params));
   platform_params.memory = 100;
 
-  if (odp_init_global (&om->instance, NULL, &platform_params))
+  if (odp_init_global (&instance, NULL, &platform_params))
     clib_warning ("Error:ODP global init failed");
 
-  if (odp_init_local (om->instance, ODP_THREAD_CONTROL) != 0)
+  if (odp_init_local (instance, ODP_THREAD_CONTROL) != 0)
     {
       clib_warning ("Error: ODP local init failed");
-      odp_term_global (om->instance);
+      odp_term_global (instance);
 
     }
+
+  shm = odp_shm_reserve ("odp_packet_main", sizeof (odp_packet_main_t),
+			 ODP_CACHE_LINE_SIZE, 0);
+  odp_packet_main = odp_shm_addr (shm);
+  if (odp_packet_main == NULL)
+    {
+      return clib_error_return (0, "Failed to initialize odp_packet");
+    }
+
+  om = odp_packet_main;
+  memset (om, 0, sizeof (odp_packet_main_t));
+  om->input_cpu_first_index = 0;
+  om->input_cpu_count = 1;
+  om->if_count = 0;
+  om->instance = instance;
 
   odp_pool_capability (&capa);
   if (capa.pkt.min_headroom != VLIB_BUFFER_PRE_DATA_SIZE)

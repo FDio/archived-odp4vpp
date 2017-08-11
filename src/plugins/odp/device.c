@@ -36,7 +36,7 @@ static u8 *
 format_odp_packet_device_name (u8 * s, va_list * args)
 {
   u32 i = va_arg (*args, u32);
-  odp_packet_main_t *om = &odp_packet_main;
+  odp_packet_main_t *om = odp_packet_main;
   odp_packet_if_t *oif = pool_elt_at_index (om->interfaces, i);
 
   s = format (s, "odp-%s", oif->host_if_name);
@@ -62,7 +62,7 @@ odp_packet_interface_tx (vlib_main_t * vm,
 			 vlib_node_runtime_t * node, vlib_frame_t * frame)
 {
 
-  odp_packet_main_t *om = &odp_packet_main;
+  odp_packet_main_t *om = odp_packet_main;
   u32 *buffers = vlib_frame_args (frame);
   u32 n_left = frame->n_vectors;
   vnet_interface_output_runtime_t *rd = (void *) node->runtime_data;
@@ -151,7 +151,7 @@ static void
 odp_packet_set_interface_next_node (vnet_main_t * vnm, u32 hw_if_index,
 				    u32 node_index)
 {
-  odp_packet_main_t *om = &odp_packet_main;
+  odp_packet_main_t *om = odp_packet_main;
   vnet_hw_interface_t *hw = vnet_get_hw_interface (vnm, hw_if_index);
   odp_packet_if_t *oif = pool_elt_at_index (om->interfaces, hw->dev_instance);
 
@@ -176,7 +176,7 @@ static clib_error_t *
 odp_packet_interface_admin_up_down (vnet_main_t * vnm, u32 hw_if_index,
 				    u32 flags)
 {
-  odp_packet_main_t *om = &odp_packet_main;
+  odp_packet_main_t *om = odp_packet_main;
   vnet_hw_interface_t *hw = vnet_get_hw_interface (vnm, hw_if_index);
   odp_packet_if_t *oif = pool_elt_at_index (om->interfaces, hw->dev_instance);
   u32 hw_flags;

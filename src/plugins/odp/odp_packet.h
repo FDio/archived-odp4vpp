@@ -43,7 +43,7 @@ typedef struct
   u32 if_count;
 } odp_packet_main_t;
 
-odp_packet_main_t odp_packet_main;
+extern odp_packet_main_t *odp_packet_main;
 extern vnet_device_class_t odp_packet_device_class;
 extern vlib_node_registration_t odp_packet_input_node;
 

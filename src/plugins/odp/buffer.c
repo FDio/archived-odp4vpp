@@ -18,7 +18,7 @@
 u32
 odp_packet_buffer_alloc (vlib_main_t * vm, u32 * buffers, u32 n_buffers)
 {
-  odp_packet_main_t *om = &odp_packet_main;
+  odp_packet_main_t *om = odp_packet_main;
   u32 len = SHM_PKT_BUF_SIZE, total = 0;
   odp_packet_t pkt;
 
