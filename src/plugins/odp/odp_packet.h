@@ -5,6 +5,7 @@
  */
 
 #include <odp_api.h>
+#include <odp/helper/odph_api.h>
 
 #define SHM_PKT_BUF_SIZE       1598
 #define SHM_PKT_POOL_BUF_SIZE  1856
@@ -13,6 +14,8 @@
 #define APPL_MODE_PKT_BURST    0
 #define APPL_MODE_PKT_QUEUE    1
 #define APPL_MODE_PKT_SCHED    2
+
+#define MAX_WORKERS 32
 
 typedef struct
 {
@@ -41,6 +44,8 @@ typedef struct
   odp_instance_t instance;
   odp_pool_t pool;
   u32 if_count;
+  u32 thread_cnt;
+  odph_odpthread_t thread_tbl[MAX_WORKERS];
 } odp_packet_main_t;
 
 extern odp_packet_main_t *odp_packet_main;

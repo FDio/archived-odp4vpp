@@ -251,24 +251,21 @@ static uword
 odp_packet_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 		     vlib_frame_t * frame)
 {
-
-  int i;
   u32 n_rx_packets = 0;
-  u32 thread_index = vlib_get_thread_index ();
   odp_packet_main_t *om = odp_packet_main;
   odp_packet_if_t *oif;
+  vnet_device_input_runtime_t *rt = (void *) node->runtime_data;
+  vnet_device_and_queue_t *dq;
 
-  for (i = 0; i < vec_len (om->interfaces); i++)
-    {
-      oif = vec_elt_at_index (om->interfaces, i);
-
-      if (oif->is_admin_up &&
-	  (i % om->input_cpu_count) ==
-	  (thread_index - om->input_cpu_first_index))
-	{
-	  n_rx_packets += odp_packet_device_input_fn (vm, node, frame, oif);
-	}
-    }
+  /*
+   * Poll all devices on this cpu for input/interrupts.
+   */
+  foreach_device_and_queue (dq, rt->devices_and_queues)
+  {
+    oif = pool_elt_at_index (om->interfaces, dq->dev_instance);
+    if (oif->is_admin_up)
+      n_rx_packets += odp_packet_device_input_fn (vm, node, frame, oif);
+  }
 
   return n_rx_packets;
 }

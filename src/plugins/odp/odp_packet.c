@@ -117,33 +117,6 @@ create_pktio (const char *dev, odp_pool_t pool, u32 mode)
   return pktio;
 }
 
-int
-odp_worker_thread_enable ()
-{
-
-  /*If worker threads are enabled, switch to polling mode */
-  foreach_vlib_main ((
-		       {
-		       vlib_node_set_state (this_vlib_main,
-					    odp_packet_input_node.index,
-					    VLIB_NODE_STATE_POLLING);
-		       }));
-  return 0;
-}
-
-int
-odp_worker_thread_disable ()
-{
-  foreach_vlib_main ((
-		       {
-		       vlib_node_set_state (this_vlib_main,
-					    odp_packet_input_node.index,
-					    VLIB_NODE_STATE_DISABLED);
-		       }));
-
-  return 0;
-}
-
 u32
 odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
 		      u32 * sw_if_index, u32 mode)
@@ -211,6 +184,8 @@ odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
 
   sw = vnet_get_hw_sw_interface (vnm, oif->hw_if_index);
   oif->sw_if_index = sw->sw_if_index;
+  vnet_hw_interface_set_input_node (vnm, oif->hw_if_index,
+				    odp_packet_input_node.index);
 
   vnet_hw_interface_set_flags (vnm, oif->hw_if_index,
 			       VNET_HW_INTERFACE_FLAG_LINK_UP);
@@ -220,16 +195,9 @@ odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
   if (sw_if_index)
     *sw_if_index = oif->sw_if_index;
 
-  if (tm->n_vlib_mains > 1 && pool_elts (om->interfaces) == 1)
-    {
-      /*Fixme :Workers support commented for now as vlib_buffer not thread safe */
-      //odp_worker_thread_enable ();
-    }
-  else
-    {
-      vlib_node_set_state (vm, odp_packet_input_node.index,
-			   VLIB_NODE_STATE_POLLING);
-    }
+  /* Assign queue 0 of the new interface to first available worker thread */
+  vnet_hw_interface_assign_rx_thread (vnm, oif->hw_if_index, 0, ~0);
+
   return 0;
 
 error:
@@ -258,6 +226,8 @@ odp_packet_delete_if (vlib_main_t * vm, u8 * host_if_name)
   oif = pool_elt_at_index (om->interfaces, p[0]);
   vnet_hw_interface_set_flags (vnm, oif->hw_if_index, 0);
 
+  vnet_hw_interface_unassign_rx_thread (vnm, oif->hw_if_index, 0);
+
   om->if_count--;
 
   odp_pktio_stop (odp_pktio_lookup ((char *) host_if_name));
@@ -274,8 +244,6 @@ odp_packet_delete_if (vlib_main_t * vm, u8 * host_if_name)
   if (tm->n_vlib_mains > 1 && pool_elts (om->interfaces) == 0)
     {
       odp_pool_destroy (om->pool);
-      /*Fixme :Workers support commented for now */
-      // odp_worker_thread_disable ();
     }
 
   return 0;
@@ -361,6 +329,9 @@ odp_packet_init (vlib_main_t * vm)
   vpm->virtual.start = params.pool_start;
   vpm->virtual.end = params.pool_end;
   vpm->virtual.size = params.pool_size;
+
+  /* Initialization complete and worker threads do not need to sync */
+  tm->worker_thread_release = 1;
 
   return 0;
 }

@@ -34,7 +34,7 @@ vlib_configure_args_odp = --with-pre-data=128
 
 #ODP configuration parameters
 odp_uses_odp=yes
-odp_odp_libs = -lodp-dpdk -ldpdk -lpcap
+odp_odp_libs = -lodp-dpdk -ldpdk -lodphelper -lpcap
 odp_odp_inc_dir=$(ODP_INST_PATH)/include
 odp_odp_lib_dir=$(ODP_INST_PATH)/lib
 
