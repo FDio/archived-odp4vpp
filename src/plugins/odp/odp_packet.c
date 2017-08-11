@@ -286,15 +286,19 @@ odp_packet_init (vlib_main_t * vm)
   odp_packet_main_t *om = &odp_packet_main;
   vlib_thread_main_t *tm = vlib_get_thread_main ();
   vlib_thread_registration_t *tr;
+  vlib_physmem_main_t *vpm = &vm->physmem_main;
   uword *p;
   odp_platform_init_t platform_params;
   odp_pool_param_t params;
+  odp_pool_capability_t capa;
 
   memset (om, 0, sizeof (odp_packet_main_t));
   om->input_cpu_first_index = 0;
   om->input_cpu_count = 1;
   om->if_count = 0;
+
   memset (&platform_params, 0, sizeof (platform_params));
+  platform_params.memory = 100;
 
   if (odp_init_global (&om->instance, NULL, &platform_params))
     clib_warning ("Error:ODP global init failed");
@@ -305,18 +309,27 @@ odp_packet_init (vlib_main_t * vm)
       odp_term_global (om->instance);
 
     }
+
+  odp_pool_capability (&capa);
+  if (capa.pkt.min_headroom != VLIB_BUFFER_PRE_DATA_SIZE)
+    {
+      return clib_error_return (0,
+				"Packet Headroom for VPP and ODP must be equal");
+    }
+
   /* Create packet pool */
   odp_pool_param_init (&params);
   params.pkt.seg_len = SHM_PKT_POOL_BUF_SIZE;
   params.pkt.len = SHM_PKT_POOL_BUF_SIZE;
   params.type = ODP_POOL_PACKET;
   params.pkt.num = SHM_PKT_POOL_NB_PKTS;
+  params.pkt.uarea_size = sizeof (vlib_buffer_t) - VLIB_BUFFER_PRE_DATA_SIZE;
 
   om->pool = odp_pool_create (SHM_PKT_POOL_NAME, &params);
 
   if (om->pool == ODP_POOL_INVALID)
     {
-      clib_warning ("Error: packet pool create failed");
+      return clib_error_return (0, "Packet pool create failed");
     }
 
   /* find out which cpus will be used for input */
@@ -331,8 +344,10 @@ odp_packet_init (vlib_main_t * vm)
 
   mhash_init_vec_string (&om->if_index_by_host_if_name, sizeof (uword));
 
-  vec_validate_aligned (om->rx_buffers, tm->n_vlib_mains - 1,
-			CLIB_CACHE_LINE_BYTES);
+  vpm->virtual.start = params.pool_start;
+  vpm->virtual.end = params.pool_end;
+  vpm->virtual.size = params.pool_size;
+
   return 0;
 }
 

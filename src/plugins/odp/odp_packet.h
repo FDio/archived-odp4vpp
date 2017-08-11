@@ -6,6 +6,7 @@
 
 #include <odp_api.h>
 
+#define SHM_PKT_BUF_SIZE       1598
 #define SHM_PKT_POOL_BUF_SIZE  1856
 #define SHM_PKT_POOL_NB_PKTS   10240
 #define SHM_PKT_POOL_NAME      "packet_pool"
@@ -33,8 +34,6 @@ typedef struct
 {
   CLIB_CACHE_LINE_ALIGN_MARK (cacheline0);
   odp_packet_if_t *interfaces;
-  /* rx buffer cache */
-  u32 **rx_buffers;
   u32 input_cpu_first_index;
   u32 input_cpu_count;
   /* hash of host interface names */
@@ -53,6 +52,17 @@ u32 odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name,
 u32 odp_packet_delete_if (vlib_main_t * vm, u8 * host_if_name);
 
 u32 drop_err_pkts (odp_packet_t pkt_tbl[], u32 len);
+
+always_inline odp_packet_t
+odp_packet_from_vlib_buffer (vlib_buffer_t * b)
+{
+  odp_packet_t packet;
+  packet = (odp_packet_t)(b->l2_priv_data);
+  if (packet == NULL)
+    clib_error("ODP packet pointer was not set properly!\n");
+
+  return packet;
+}
 
 /*
  * fd.io coding-style-patch-verification: ON

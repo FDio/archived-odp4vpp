@@ -37,7 +37,7 @@ format_odp_packet_device_name (u8 * s, va_list * args)
 {
   u32 i = va_arg (*args, u32);
   odp_packet_main_t *om = &odp_packet_main;
-  odp_packet_if_t *oif = vec_elt_at_index (om->interfaces, i);
+  odp_packet_if_t *oif = pool_elt_at_index (om->interfaces, i);
 
   s = format (s, "odp-%s", oif->host_if_name);
   return s;
@@ -69,7 +69,9 @@ odp_packet_interface_tx (vlib_main_t * vm,
   odp_packet_if_t *oif = pool_elt_at_index (om->interfaces, rd->dev_instance);
   odp_pktout_queue_t pktout;
   odp_packet_t pkt_tbl[VLIB_FRAME_SIZE];
-  u32 sent = 0, count = 0;
+  u32 sent, count = 0;
+  vlib_buffer_t *b0;
+  u32 bi;
 
   if (PREDICT_FALSE (oif->lockp != 0))
     {
@@ -84,50 +86,65 @@ odp_packet_interface_tx (vlib_main_t * vm,
 
   while (n_left > 0)
     {
-      u32 len;
-      vlib_buffer_t *b0;
+      odp_packet_t pkt;
+      int ret, diff;
+
+      bi = buffers[0];
       n_left--;
-      u32 bi = buffers[0];
       buffers++;
 
+    next_present:
       do
 	{
 	  b0 = vlib_get_buffer (vm, bi);
-	  len = b0->current_length;
-	  pkt_tbl[count] = odp_packet_alloc (om->pool, len);
+	  pkt = odp_packet_from_vlib_buffer (b0);
 
-	  if (pkt_tbl[count] == ODP_PACKET_INVALID)
-	    {
-	      clib_warning ("odp packet alloc failed");
-	    }
-
-	  clib_memcpy ((u8 *) (odp_packet_data (pkt_tbl[count])),
-		       vlib_buffer_get_current (b0), len);
+	  diff = (uintptr_t) (b0->data + b0->current_data) -
+	    (uintptr_t) odp_packet_data (pkt);
+	  if (diff > 0)
+	    odp_packet_pull_head (pkt, diff);
+	  else if (diff < 0)
+	    odp_packet_push_head (pkt, -diff);
+	  diff = b0->current_length - odp_packet_len (pkt);
+	  if (diff > 0)
+	    odp_packet_push_tail (pkt, diff);
+	  else if (diff < 0)
+	    odp_packet_pull_tail (pkt, -diff);
+	  pkt_tbl[count] = pkt;
 	  count++;
+	  bi = b0->next_buffer;
 	}
-      while ((bi = b0->next_buffer) && (count < VLIB_FRAME_SIZE));
-    }
+      while ((b0->flags & VLIB_BUFFER_NEXT_PRESENT)
+	     && (count < VLIB_FRAME_SIZE));
 
-  CLIB_MEMORY_BARRIER ();
+      if ((n_left > 0) && (count < VLIB_FRAME_SIZE))
+	continue;
 
-  sent = odp_pktout_send (pktout, pkt_tbl, count);
-  sent = sent > 0 ? sent : 0;
-
-  if (odp_unlikely (sent < count))
-    {
-      do
+      sent = 0;
+      while (count > 0)
 	{
-	  odp_packet_free (pkt_tbl[sent]);
+	  ret = odp_pktout_send (pktout, &pkt_tbl[sent], count);
+	  if (odp_unlikely (ret <= 0))
+	    {
+	      /* Drop one packet and try again */
+	      odp_packet_free (pkt_tbl[sent]);
+	      count--;
+	      sent++;
+	    }
+	  else
+	    {
+	      count -= ret;
+	      sent += ret;
+	    }
 	}
-      while (++sent < count);
+      if (b0->flags & VLIB_BUFFER_NEXT_PRESENT)
+	goto next_present;
     }
 
   if (PREDICT_FALSE (oif->lockp != 0))
     *oif->lockp = 0;
 
-  vlib_buffer_free (vm, vlib_frame_args (frame), frame->n_vectors);
-
-  return frame->n_vectors;
+  return (frame->n_vectors - n_left);
 }
 
 static void
@@ -144,10 +161,9 @@ odp_packet_set_interface_next_node (vnet_main_t * vnm, u32 hw_if_index,
       return;
     }
 
-  oif->per_interface_next_index =
-    vlib_node_add_next (vlib_get_main (), odp_packet_input_node.index,
-			node_index);
-
+  oif->per_interface_next_index = vlib_node_add_next (vlib_get_main (),
+						      odp_packet_input_node.
+						      index, node_index);
 }
 
 static void

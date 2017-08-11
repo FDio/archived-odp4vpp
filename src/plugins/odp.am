@@ -18,7 +18,8 @@ odp_plugin_la_LDFLAGS = $(AM_LDFLAGS) $(ODP_LIBS)
 odp_plugin_la_SOURCES = odp/cli.c	\
 	odp/node.c			\
 	odp/odp_packet.c		\
-	odp/device.c
+	odp/device.c			\
+	odp/buffer.c
 
 noinst_HEADERS += odp/odp_packet.h
 
