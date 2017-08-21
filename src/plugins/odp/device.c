@@ -77,10 +77,11 @@ odp_packet_interface_tx (vlib_main_t * vm,
   u32 n_left = frame->n_vectors;
   vnet_interface_output_runtime_t *rd = (void *) node->runtime_data;
   odp_packet_if_t *oif = pool_elt_at_index (om->interfaces, rd->dev_instance);
-  uword queue_index = vlib_get_thread_index () % oif->tx_queues;
-  u32 mode = oif->mode;
-  odp_packet_t pkt_tbl[VLIB_FRAME_SIZE];
-  odp_event_t evt_tbl[VLIB_FRAME_SIZE];
+  uword queue_index = vlib_get_thread_index () % oif->m.num_tx_queues;
+  u32 mode = oif->m.tx_mode;
+  u32 burst_size = (tx_burst_size ? tx_burst_size : VLIB_FRAME_SIZE);
+  odp_packet_t pkt_tbl[burst_size];
+  odp_event_t evt_tbl[burst_size];
   vlib_buffer_t *b0;
   u32 bi, sent, count = 0;
 
@@ -122,10 +123,9 @@ odp_packet_interface_tx (vlib_main_t * vm,
 	  count++;
 	  bi = b0->next_buffer;
 	}
-      while ((b0->flags & VLIB_BUFFER_NEXT_PRESENT)
-	     && (count < VLIB_FRAME_SIZE));
+      while ((b0->flags & VLIB_BUFFER_NEXT_PRESENT) && (count < burst_size));
 
-      if ((n_left > 0) && (count < VLIB_FRAME_SIZE))
+      if ((n_left > 0) && (count < burst_size))
 	continue;
 
       sent = 0;
@@ -133,7 +133,6 @@ odp_packet_interface_tx (vlib_main_t * vm,
 	{
 	  switch (mode)
 	    {
-	    case APPL_MODE_PKT_SCHED:
 	    case APPL_MODE_PKT_BURST:
 	      ret =
 		odp_pktout_send (oif->outq[queue_index], &pkt_tbl[sent],
@@ -143,6 +142,7 @@ odp_packet_interface_tx (vlib_main_t * vm,
 	      ret = odp_queue_enq_multi (oif->txq[queue_index],
 					 &evt_tbl[sent], count);
 	      break;
+	    case APPL_MODE_PKT_TM:
 	    default:
 	      ret = 0;
 	      clib_error ("Invalid mode\n");

@@ -25,14 +25,14 @@ odp_packet_create_command_fn (vlib_main_t * vm, unformat_input_t * input,
   u8 *host_if_name = NULL;
   u8 hwaddr[6];
   u8 *hw_addr_ptr = 0;
-  u32 sw_if_index;
-  u32 mode = APPL_MODE_PKT_BURST;
-  u32 rx_queues = 0;
+  u32 sw_if_index, num;
+  odp_if_mode_t if_mode;
   int r;
 
   if (!unformat_user (input, unformat_line_input, line_input))
     return 0;
 
+  if_mode = def_if_mode;
 
   while (unformat_check_input (line_input) != UNFORMAT_END_OF_INPUT)
     {
@@ -42,10 +42,14 @@ odp_packet_create_command_fn (vlib_main_t * vm, unformat_input_t * input,
 	if (unformat
 	    (line_input, "hw-addr %U", unformat_ethernet_address, hwaddr))
 	hw_addr_ptr = hwaddr;
-      else if (unformat (line_input, "mode %d", &mode))
-	;
-      else if (unformat (line_input, "rx-queues %d", &rx_queues))
-	;
+      else if (unformat (line_input, "rx-mode %d", &num))
+	if_mode.rx_mode = num;
+      else if (unformat (line_input, "tx-mode %d", &num))
+	if_mode.tx_mode = num;
+      else if (unformat (line_input, "rx-queues %d", &num))
+	if_mode.num_rx_queues = num;
+      else if (unformat (line_input, "tx-queues %d", &num))
+	if_mode.num_tx_queues = num;
       else
 	return clib_error_return (0, "unknown input `%U'",
 				  format_unformat_error, input);
@@ -56,7 +60,7 @@ odp_packet_create_command_fn (vlib_main_t * vm, unformat_input_t * input,
     return clib_error_return (0, "missing host interface name");
 
   r = odp_packet_create_if (vm, host_if_name, hw_addr_ptr, &sw_if_index,
-			    mode, rx_queues);
+			    &if_mode);
   vec_free (host_if_name);
 
   if (r == VNET_API_ERROR_SYSCALL_ERROR_1)

@@ -80,7 +80,7 @@ odp_packet_queue_mode (odp_packet_if_t * oif, odp_packet_t pkt_tbl[],
       clib_warning ("invalid oif->pktio value");
       return 0;
     }
-  if ((oif->mode == APPL_MODE_PKT_QUEUE) &&
+  if ((oif->m.rx_mode == APPL_MODE_PKT_QUEUE) &&
       (oif->rxq[queue_id] == ODP_QUEUE_INVALID))
     {
       clib_warning ("invalid rxq[%d] queue", queue_id);
@@ -89,14 +89,15 @@ odp_packet_queue_mode (odp_packet_if_t * oif, odp_packet_t pkt_tbl[],
 
   while (req_pkts)
     {
-      if (oif->mode == APPL_MODE_PKT_QUEUE)
+      if (oif->m.rx_mode == APPL_MODE_PKT_QUEUE)
 	{
 	  i = odp_queue_deq_multi (oif->rxq[queue_id],
 				   &evt_tbl[num_evts], req_pkts);
 	}
       else
 	{
-	  sched_wait = odp_schedule_wait_time (ODP_TIME_USEC_IN_NS);
+	  sched_wait = odp_schedule_wait_time (ODP_TIME_USEC_IN_NS *
+					       rx_sched_wait);
 	  i = odp_schedule_multi (NULL, sched_wait,
 				  &evt_tbl[num_evts], req_pkts);
 	}
@@ -229,8 +230,8 @@ odp_packet_device_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 
   do
     {
-      if ((oif->mode == (APPL_MODE_PKT_QUEUE)) ||
-	  (oif->mode == (APPL_MODE_PKT_SCHED)))
+      if ((oif->m.rx_mode == (APPL_MODE_PKT_QUEUE)) ||
+	  (oif->m.rx_mode == (APPL_MODE_PKT_SCHED)))
 	{
 	  pkts =
 	    odp_packet_queue_mode (oif, pkt_tbl, queue_id, n_left_to_next);

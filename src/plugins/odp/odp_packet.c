@@ -10,11 +10,17 @@
 #include <vlib/unix/unix.h>
 #include <vnet/ip/ip.h>
 #include <vnet/ethernet/ethernet.h>
-#include <odp/odp_packet.h>
 #include <vnet/plugin/plugin.h>
 #include <vpp/app/version.h>
+#include <odp/odp_packet.h>
 
 odp_packet_main_t *odp_packet_main;
+odp_platform_init_t platform_params;
+u32 rx_sched_wait;
+u32 tx_burst_size;
+u32 num_pkts_in_pool = SHM_PKT_POOL_NB_PKTS;
+odp_if_mode_t def_if_mode;
+odp_if_config_t *if_config;
 
 static u32
 odp_packet_eth_flag_change (vnet_main_t * vnm, vnet_hw_interface_t * hi,
@@ -61,8 +67,7 @@ drop_err_pkts (odp_packet_t pkt_tbl[], unsigned len)
 }
 
 static odp_pktio_t
-create_pktio (const char *dev, odp_pool_t pool, u32 mode,
-	      odp_packet_if_t * oif)
+create_pktio (const char *dev, odp_pool_t pool, odp_packet_if_t * oif)
 {
   odp_pktio_t pktio;
   int ret;
@@ -75,22 +80,35 @@ create_pktio (const char *dev, odp_pool_t pool, u32 mode,
 
   odp_pktio_param_init (&pktio_param);
 
-  switch (mode)
+  switch (oif->m.rx_mode)
     {
     case APPL_MODE_PKT_BURST:
       pktio_param.in_mode = ODP_PKTIN_MODE_DIRECT;
-      pktio_param.out_mode = ODP_PKTOUT_MODE_DIRECT;
       break;
     case APPL_MODE_PKT_QUEUE:
       pktio_param.in_mode = ODP_PKTIN_MODE_QUEUE;
-      pktio_param.out_mode = ODP_PKTOUT_MODE_QUEUE;
       break;
     case APPL_MODE_PKT_SCHED:
       pktio_param.in_mode = ODP_PKTIN_MODE_SCHED;
-      pktio_param.out_mode = ODP_PKTOUT_MODE_DIRECT;
       break;
     default:
-      clib_warning ("Invalid mode\n");
+      clib_warning ("Invalid RX mode\n");
+    }
+
+  switch (oif->m.tx_mode)
+    {
+    case APPL_MODE_PKT_BURST:
+      pktio_param.out_mode = ODP_PKTOUT_MODE_DIRECT;
+      break;
+    case APPL_MODE_PKT_QUEUE:
+      pktio_param.out_mode = ODP_PKTOUT_MODE_QUEUE;
+      break;
+    case APPL_MODE_PKT_TM:
+      clib_error ("Traffic Manager mode not supported!\n");
+      pktio_param.out_mode = ODP_PKTOUT_MODE_TM;
+      break;
+    default:
+      clib_warning ("Invalid TX mode\n");
     }
 
   /* Open a packet IO instance */
@@ -115,28 +133,29 @@ create_pktio (const char *dev, odp_pool_t pool, u32 mode,
   odp_pktin_queue_param_init (&pktin_param);
   pktin_param.op_mode = ODP_PKTIO_OP_MT_UNSAFE;
 
-  if (oif->rx_queues > capa.max_input_queues)
+  if (oif->m.num_rx_queues > capa.max_input_queues)
     {
-      oif->rx_queues = capa.max_input_queues;
-      clib_warning ("Number of RX queues limited to %d\n", oif->rx_queues);
+      oif->m.num_rx_queues = capa.max_input_queues;
+      clib_warning ("pktio %s: Number of RX queues limited to %d\n",
+		    dev, oif->m.num_rx_queues);
     }
 
-  if (oif->rx_queues > 1)
+  if (oif->m.num_rx_queues > 1)
     {
-      if (oif->rx_queues > MAX_QUEUES)
-	oif->rx_queues = MAX_QUEUES;
+      if (oif->m.num_rx_queues > MAX_QUEUES)
+	oif->m.num_rx_queues = MAX_QUEUES;
 
       pktin_param.classifier_enable = 0;
       pktin_param.hash_enable = 1;
-      pktin_param.num_queues = oif->rx_queues;
+      pktin_param.num_queues = oif->m.num_rx_queues;
       pktin_param.hash_proto.proto.ipv4_udp = 1;
       pktin_param.hash_proto.proto.ipv4_tcp = 1;
       pktin_param.hash_proto.proto.ipv4 = 1;
     }
   else
-    oif->rx_queues = 1;
+    oif->m.num_rx_queues = 1;
 
-  if (mode == APPL_MODE_PKT_SCHED)
+  if (oif->m.rx_mode == APPL_MODE_PKT_SCHED)
     pktin_param.queue_param.sched.sync = ODP_SCHED_SYNC_ATOMIC;
 
   if (odp_pktin_queue_config (pktio, &pktin_param))
@@ -145,15 +164,16 @@ create_pktio (const char *dev, odp_pool_t pool, u32 mode,
     }
 
   odp_pktout_queue_param_init (&pktout_param);
-  if (capa.max_output_queues >= tm->n_vlib_mains)
+  if ((capa.max_output_queues >= tm->n_vlib_mains) &&
+      (oif->m.num_tx_queues == 0))
     {
       pktout_param.op_mode = ODP_PKTIO_OP_MT_UNSAFE;
       pktout_param.num_queues = tm->n_vlib_mains;
-      oif->tx_queues = tm->n_vlib_mains;
+      oif->m.num_tx_queues = tm->n_vlib_mains;
     }
   else
     {
-      oif->tx_queues = 1;
+      oif->m.num_tx_queues = 1;
     }
 
   if (odp_pktout_queue_config (pktio, &pktout_param))
@@ -172,7 +192,7 @@ create_pktio (const char *dev, odp_pool_t pool, u32 mode,
 
 u32
 odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
-		      u32 * sw_if_index, u32 mode, u32 rx_queues)
+		      u32 * sw_if_index, odp_if_mode_t * mode)
 {
   odp_packet_main_t *om = odp_packet_main;
   int ret = 0, j;
@@ -182,7 +202,6 @@ odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
   vnet_sw_interface_t *sw;
   vnet_main_t *vnm = vnet_get_main ();
   uword *p;
-  u8 *host_if_name_dup = vec_dup (host_if_name);
   vlib_thread_main_t *tm = vlib_get_thread_main ();
 
   p = mhash_get (&om->if_index_by_host_if_name, host_if_name);
@@ -191,17 +210,21 @@ odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
 
   pool_get (om->interfaces, oif);
   oif->if_index = oif - om->interfaces;
-  oif->host_if_name = host_if_name_dup;
+  oif->host_if_name = vec_dup (host_if_name);
   oif->per_interface_next_index = ~0;
+  oif->m = *mode;
 
-  if (mode == APPL_MODE_PKT_SCHED)
-    oif->rx_queues = tm->n_vlib_mains - 1;
-  else
-    oif->rx_queues = rx_queues;
+  if (mode->rx_mode == APPL_MODE_PKT_SCHED)
+    oif->m.num_rx_queues = tm->n_vlib_mains - 1;
 
   /* Create a pktio instance */
-  oif->pktio = create_pktio ((char *) host_if_name, om->pool, mode, oif);
-  oif->mode = mode;
+  oif->pktio = create_pktio ((char *) host_if_name, om->pool, oif);
+  if (oif->pktio == 0)
+    {
+      ret = VNET_API_ERROR_INVALID_INTERFACE;
+      goto error;
+    }
+
   om->if_count++;
 
   if (tm->n_vlib_mains > 1)
@@ -211,22 +234,21 @@ odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
       memset ((void *) oif->lockp, 0, CLIB_CACHE_LINE_BYTES);
     }
 
-  if ((mode == APPL_MODE_PKT_BURST) || (mode == APPL_MODE_PKT_SCHED))
-    {
-      odp_pktin_queue (oif->pktio, oif->inq, oif->rx_queues);
-      odp_pktout_queue (oif->pktio, oif->outq, oif->tx_queues);
-    }
-  else if (mode == APPL_MODE_PKT_QUEUE)
-    {
-      odp_pktin_event_queue (oif->pktio, oif->rxq, oif->rx_queues);
-      odp_pktout_event_queue (oif->pktio, oif->txq, oif->tx_queues);
-    }
+  if (mode->rx_mode == APPL_MODE_PKT_BURST)
+    odp_pktin_queue (oif->pktio, oif->inq, oif->m.num_rx_queues);
+  else if (mode->rx_mode == APPL_MODE_PKT_QUEUE)
+    odp_pktin_event_queue (oif->pktio, oif->rxq, oif->m.num_rx_queues);
+  if (mode->tx_mode == APPL_MODE_PKT_BURST)
+    odp_pktout_queue (oif->pktio, oif->outq, oif->m.num_tx_queues);
+  else if (mode->tx_mode == APPL_MODE_PKT_QUEUE)
+    odp_pktout_event_queue (oif->pktio, oif->txq, oif->m.num_tx_queues);
 
-  /*use configured or generate random MAC address */
+  /* Use configured MAC or read MAC from DPDK */
   if (hw_addr_set)
     clib_memcpy (hw_addr, hw_addr_set, 6);
-  else
+  else if (odp_pktio_mac_addr (oif->pktio, hw_addr, sizeof (hw_addr)) < 6)
     {
+      /* Failed to read MAC from driver, set random MAC */
       f64 now = vlib_time_now (vm);
       u32 rnd;
       rnd = (u32) (now * 1e6);
@@ -244,8 +266,6 @@ odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
 
   if (error)
     {
-      memset (oif, 0, sizeof (*oif));
-      pool_put (om->interfaces, oif);
       clib_error_report (error);
       ret = VNET_API_ERROR_SYSCALL_ERROR_1;
       goto error;
@@ -259,15 +279,15 @@ odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
   vnet_hw_interface_set_flags (vnm, oif->hw_if_index,
 			       VNET_HW_INTERFACE_FLAG_LINK_UP);
 
-  mhash_set_mem (&om->if_index_by_host_if_name, host_if_name_dup,
+  mhash_set_mem (&om->if_index_by_host_if_name, oif->host_if_name,
 		 &oif->if_index, 0);
   if (sw_if_index)
     *sw_if_index = oif->sw_if_index;
 
   /* Assign queues of the new interface to first available worker thread */
-  for (j = 0; j < oif->rx_queues; j++)
+  for (j = 0; j < oif->m.num_rx_queues; j++)
     {
-      if (mode == APPL_MODE_PKT_SCHED)
+      if (mode->rx_mode == APPL_MODE_PKT_SCHED)
 	vnet_hw_interface_assign_rx_thread (vnm, oif->hw_if_index, 0, j + 1);
       else
 	vnet_hw_interface_assign_rx_thread (vnm, oif->hw_if_index, j, -1);
@@ -276,7 +296,9 @@ odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
   return 0;
 
 error:
-  vec_free (host_if_name_dup);
+  vec_free (oif->host_if_name);
+  memset (oif, 0, sizeof (*oif));
+  pool_put (om->interfaces, oif);
 
   return ret;
 }
@@ -326,6 +348,191 @@ odp_packet_delete_if (vlib_main_t * vm, u8 * host_if_name)
 }
 
 static clib_error_t *
+odp_device_config (char *name, unformat_input_t * input)
+{
+  odp_if_mode_t mode;
+  odp_if_config_t *config;
+  char *val;
+  u32 num;
+  u8 set_hw_addr = 0;
+  u8 hw_addr[6];
+
+  mode = def_if_mode;
+
+  if (input)
+    {
+      unformat_skip_white_space (input);
+      while (unformat_check_input (input) != UNFORMAT_END_OF_INPUT)
+	{
+	  if (unformat (input, "rx-mode %s", &val))
+	    {
+	      if (!strcmp (val, "burst") || !strcmp (val, "0"))
+		mode.rx_mode = APPL_MODE_PKT_BURST;
+	      else if (!strcmp (val, "queue") || !strcmp (val, "1"))
+		mode.rx_mode = APPL_MODE_PKT_QUEUE;
+	      else if (!strcmp (val, "sched") || !strcmp (val, "2"))
+		mode.rx_mode = APPL_MODE_PKT_SCHED;
+	      vec_free (val);
+	    }
+	  else if (unformat (input, "tx-mode %s", &val))
+	    {
+	      if (!strcmp (val, "burst") || !strcmp (val, "0"))
+		mode.tx_mode = APPL_MODE_PKT_BURST;
+	      else if (!strcmp (val, "queue") || !strcmp (val, "1"))
+		mode.tx_mode = APPL_MODE_PKT_QUEUE;
+	      else if (!strcmp (val, "tm") || !strcmp (val, "2"))
+		mode.tx_mode = APPL_MODE_PKT_TM;
+	      vec_free (val);
+	    }
+	  else if (unformat (input, "num-rx-queues %u", &num))
+	    mode.num_rx_queues = num;
+	  else if (unformat (input, "num-tx-queues %u", &num))
+	    mode.num_tx_queues = num;
+	  else if (unformat (input, "num-tx-queues %s", &val))
+	    {
+	      if (!strcmp (val, "max"))
+		mode.num_tx_queues = 0;
+	      vec_free (val);
+	    }
+	  else if (unformat (input, "hw-addr %U", unformat_ethernet_address,
+			     hw_addr))
+	    set_hw_addr = 1;
+	  else if (unformat (input, "%s", &val))
+	    {
+	      clib_warning ("%s: Unknown option %s\n", __func__, val);
+	      vec_free (val);
+	    }
+	}
+    }
+
+  if (!name)
+    {
+      def_if_mode = mode;
+      return 0;
+    }
+
+  /* Save configuration */
+  pool_get (if_config, config);
+  config->name = (u8 *) vec_dup (name);
+  config->mode = mode;
+  clib_memcpy (config->hw_addr, hw_addr, 6);
+  config->set_hw_addr = set_hw_addr;
+
+  return 0;
+}
+
+static clib_error_t *
+odp_config (vlib_main_t * vm, unformat_input_t * input)
+{
+  char *param = NULL;
+  u32 num;
+  unformat_input_t sub_input;
+  unformat_input_t line_input;
+
+  while (unformat_check_input (input) != UNFORMAT_END_OF_INPUT)
+    {
+      if (unformat (input, "platform-params %U",
+		    unformat_vlib_cli_sub_input, &sub_input))
+	{
+	  unformat_skip_white_space (&sub_input);
+	  while (unformat_check_input (&sub_input) != UNFORMAT_END_OF_INPUT)
+	    {
+	      if (unformat (&sub_input, "memory %u", &num))
+		platform_params.memory = num;
+	      else if (unformat (&sub_input, "cmdline %U",
+				 unformat_vlib_cli_sub_input, &line_input))
+		{
+		  unformat (&line_input, "%U", unformat_line, &param);
+		  platform_params.cmdline = param;
+		  unformat_free (&line_input);
+		}
+	      else if (unformat (&sub_input, "%s", &param))
+		{
+		  clib_warning ("%s: Unknown platform option %s\n", __func__,
+				param);
+		  vec_free (param);
+		}
+	    }
+	  unformat_free (&sub_input);
+	}
+      else if (unformat (input, "rx-sched-wait %u", &rx_sched_wait))
+	;
+      else if (unformat (input, "tx-burst-size %u", &tx_burst_size))
+	;
+      else if (unformat (input, "num-pkts-in-pool %u", &num_pkts_in_pool))
+	;
+      else if (unformat (input, "default %U", unformat_vlib_cli_sub_input,
+			 &sub_input))
+	{
+	  odp_device_config (NULL, &sub_input);
+	  unformat_free (&sub_input);
+	}
+      else if (unformat (input, "dev %s %U", &param,
+			 unformat_vlib_cli_sub_input, &sub_input))
+	{
+	  odp_device_config (param, &sub_input);
+	  vec_free (param);
+	  unformat_free (&sub_input);
+	}
+      else if (unformat (input, "dev %s", &param))
+	{
+	  odp_device_config (param, NULL);
+	  vec_free (param);
+	}
+      else if (unformat (input, "%s", &param))
+	{
+	  clib_warning ("%s: Unknown option %s\n", __func__, param);
+	  vec_free (param);
+	}
+    }
+
+  return 0;
+}
+
+VLIB_EARLY_CONFIG_FUNCTION (odp_config, "odp");
+
+static uword
+odp_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
+{
+  u32 i, ret;
+  odp_if_config_t *config;
+  vlib_thread_main_t *tm = vlib_get_thread_main ();
+
+  /* Create interfaces defined in startup configuration file */
+  for (i = 0; i < pool_len (if_config); i++)
+    {
+      config = pool_elt_at_index (if_config, i);
+      ret = odp_packet_create_if (vm, config->name,
+				  (config->set_hw_addr ? config->hw_addr :
+				   NULL), NULL, &config->mode);
+      vec_free (config->name);
+
+      if (ret == VNET_API_ERROR_SYSCALL_ERROR_1)
+	clib_warning ("%s (errno %d)", strerror (errno), errno);
+
+      if (ret == VNET_API_ERROR_INVALID_INTERFACE)
+	clib_warning ("Invalid interface name");
+
+      if (ret == VNET_API_ERROR_SUBIF_ALREADY_EXISTS)
+	clib_warning ("Interface already exists");
+    }
+  pool_free (if_config);
+
+  /* Initialization complete and worker threads can start */
+  tm->worker_thread_release = 1;
+
+  return 0;
+}
+
+/* *INDENT-OFF* */
+VLIB_REGISTER_NODE (odp_process_node,static) = {
+    .function = odp_process,
+    .type = VLIB_NODE_TYPE_PROCESS,
+    .name = "odp-process",
+};
+/* *INDENT-ON* */
+
+static clib_error_t *
 odp_packet_init (vlib_main_t * vm)
 {
   odp_packet_main_t *om;
@@ -333,17 +540,19 @@ odp_packet_init (vlib_main_t * vm)
   vlib_thread_registration_t *tr;
   vlib_physmem_main_t *vpm = &vm->physmem_main;
   uword *p;
-  odp_platform_init_t platform_params;
   odp_pool_param_t params;
   odp_pool_capability_t capa;
   odp_shm_t shm;
   odp_instance_t instance;
 
-  memset (&platform_params, 0, sizeof (platform_params));
-  platform_params.memory = 100;
+  if (platform_params.memory == 0)
+    {
+      platform_params.memory = 50 + num_pkts_in_pool * 4 / 1024;
+      clib_warning ("Warning: Platform 'memory' parameter not configured!");
+    }
 
   if (odp_init_global (&instance, NULL, &platform_params))
-    clib_warning ("Error:ODP global init failed");
+    clib_warning ("Error: ODP global init failed");
 
   if (odp_init_local (instance, ODP_THREAD_CONTROL) != 0)
     {
@@ -379,7 +588,7 @@ odp_packet_init (vlib_main_t * vm)
   params.pkt.seg_len = SHM_PKT_POOL_BUF_SIZE;
   params.pkt.len = SHM_PKT_POOL_BUF_SIZE;
   params.type = ODP_POOL_PACKET;
-  params.pkt.num = SHM_PKT_POOL_NB_PKTS;
+  params.pkt.num = num_pkts_in_pool;
   params.pkt.uarea_size = sizeof (vlib_buffer_t) - VLIB_BUFFER_PRE_DATA_SIZE;
 
   om->pool = odp_pool_create (SHM_PKT_POOL_NAME, &params);
@@ -404,9 +613,6 @@ odp_packet_init (vlib_main_t * vm)
   vpm->virtual.start = params.pool_start;
   vpm->virtual.end = params.pool_end;
   vpm->virtual.size = params.pool_size;
-
-  /* Initialization complete and worker threads do not need to sync */
-  tm->worker_thread_release = 1;
 
   return 0;
 }
