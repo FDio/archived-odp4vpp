@@ -80,6 +80,7 @@ extern u32 rx_sched_wait;
 extern u32 tx_burst_size;
 extern u32 num_pkts_in_pool;
 extern odp_if_mode_t def_if_mode;
+extern u8 enable_odp_crypto;
 
 u32 odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name,
 			  u8 * hw_addr_set, u32 * sw_if_index,

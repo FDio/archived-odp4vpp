@@ -15,13 +15,18 @@ vppplugins_LTLIBRARIES += odp_plugin.la
 
 odp_plugin_la_LDFLAGS = $(AM_LDFLAGS) $(ODP_LIBS)
 
-odp_plugin_la_SOURCES = odp/cli.c	\
-	odp/node.c			\
-	odp/odp_packet.c		\
-	odp/device.c			\
-	odp/buffer.c                    \
-        odp/thread.c
+odp_plugin_la_SOURCES = odp/cli.c		\
+	odp/node.c				\
+	odp/odp_packet.c			\
+	odp/device.c				\
+	odp/buffer.c				\
+        odp/thread.c				\
+	odp/ipsec/ipsec.c			\
+	odp/ipsec/esp_encrypt.c			\
+	odp/ipsec/esp_decrypt.c
 
-noinst_HEADERS += odp/odp_packet.h
+noinst_HEADERS += odp/odp_packet.h    		\
+	odp/ipsec/ipsec.h			\
+	odp/ipsec/esp.h
 
 # vi:syntax=automake

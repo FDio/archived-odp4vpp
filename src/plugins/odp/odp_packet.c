@@ -13,6 +13,7 @@
 #include <vnet/plugin/plugin.h>
 #include <vpp/app/version.h>
 #include <odp/odp_packet.h>
+#include <odp/ipsec/ipsec.h>
 
 odp_packet_main_t *odp_packet_main;
 u32 rx_sched_wait;
@@ -20,6 +21,8 @@ u32 tx_burst_size;
 u32 num_pkts_in_pool = SHM_PKT_POOL_NB_PKTS;
 odp_if_mode_t def_if_mode;
 odp_if_config_t *if_config;
+odp_crypto_main_t odp_crypto_main;
+u8 enable_odp_crypto;
 
 static u32
 odp_packet_eth_flag_change (vnet_main_t * vnm, vnet_hw_interface_t * hi,
@@ -422,6 +425,10 @@ odp_config (vlib_main_t * vm, unformat_input_t * input)
 	  odp_device_config (param, NULL);
 	  vec_free (param);
 	}
+      else if (unformat (input, "enable-odp-crypto"))
+	{
+	  enable_odp_crypto = 1;
+	}
       else if (unformat (input, "%s", &param))
 	{
 	  clib_warning ("%s: Unknown option %s\n", __func__, param);
@@ -463,6 +470,8 @@ odp_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
 
   /* Initialization complete and worker threads can start */
   tm->worker_thread_release = 1;
+
+  ipsec_init (vlib_get_main ());
 
   return 0;
 }
