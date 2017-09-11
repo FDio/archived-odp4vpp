@@ -67,6 +67,8 @@ create_pktio (const char *dev, odp_pool_t pool, u32 mode)
   int ret;
   odp_pktio_param_t pktio_param;
   odp_pktin_queue_param_t pktin_param;
+  odp_pktout_queue_param_t pktout_param;
+  odp_pktio_config_t pktio_config;
 
   odp_pktio_param_init (&pktio_param);
 
@@ -93,7 +95,13 @@ create_pktio (const char *dev, odp_pool_t pool, u32 mode)
       clib_warning ("Error: pktio create failed for %s", dev);
     }
 
+  odp_pktio_config_init (&pktio_config);
+  pktio_config.parser.layer = ODP_PKTIO_PARSER_LAYER_NONE;
+  odp_pktio_config (pktio, &pktio_config);
+
   odp_pktin_queue_param_init (&pktin_param);
+  pktin_param.classifier_enable = 0;
+  pktin_param.op_mode = ODP_PKTIO_OP_MT_UNSAFE;
 
   if (mode == APPL_MODE_PKT_SCHED)
     pktin_param.queue_param.sched.sync = ODP_SCHED_SYNC_ATOMIC;
@@ -103,7 +111,12 @@ create_pktio (const char *dev, odp_pool_t pool, u32 mode)
       clib_warning ("Error: pktin config failed");
     }
 
-  if (odp_pktout_queue_config (pktio, NULL))
+  odp_pktout_queue_param_init (&pktout_param);
+  /* TODO use multiple output queue and no synchronization
+     pktout_param.op_mode = ODP_PKTIO_OP_MT_UNSAFE;
+   */
+
+  if (odp_pktout_queue_config (pktio, &pktout_param))
     {
       clib_warning ("Error: pktout config failed");
     }

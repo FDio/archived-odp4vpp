@@ -31,6 +31,16 @@ static char *odp_packet_tx_func_error_strings[] = {
 #undef _
 };
 
+static_always_inline void
+odp_prefetch_buffer_by_index (vlib_main_t * vm, u32 bi)
+{
+  vlib_buffer_t *b;
+  odp_packet_t pkt;
+  b = vlib_get_buffer (vm, bi);
+  pkt = odp_packet_from_vlib_buffer (b);
+  CLIB_PREFETCH (pkt, CLIB_CACHE_LINE_BYTES, LOAD);
+  CLIB_PREFETCH (b, CLIB_CACHE_LINE_BYTES, LOAD);
+}
 
 static u8 *
 format_odp_packet_device_name (u8 * s, va_list * args)
