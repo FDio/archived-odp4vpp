@@ -66,43 +66,48 @@ odp_prefetch_ethertype (odp_packet_t pkt)
 }
 
 always_inline int
-odp_packet_queue_mode (odp_pktio_t pktio, u32 mode, odp_packet_t pkt_tbl[])
+odp_packet_queue_mode (odp_packet_if_t * oif, odp_packet_t pkt_tbl[],
+		       u32 queue_id, u32 req_pkts)
 {
   u32 num_evts = 0, num_pkts = 0;
   int i;
-  odp_queue_t inq;
-  odp_event_t evt_tbl[VLIB_FRAME_SIZE];
-  u64 sched_wait = odp_schedule_wait_time (ODP_TIME_MSEC_IN_NS * 100);
+  odp_pktio_t pktio = oif->pktio;
+  odp_event_t evt_tbl[req_pkts];
+  u64 sched_wait;
 
   if (pktio == ODP_PKTIO_INVALID)
     {
-      clib_warning ("odp_pktio_lookup() failed");
+      clib_warning ("invalid oif->pktio value");
+      return 0;
+    }
+  if ((oif->mode == APPL_MODE_PKT_QUEUE) &&
+      (oif->rxq[queue_id] == ODP_QUEUE_INVALID))
+    {
+      clib_warning ("invalid rxq[%d] queue", queue_id);
       return 0;
     }
 
-  inq = ODP_QUEUE_INVALID;
-  if ((mode == APPL_MODE_PKT_QUEUE) &&
-      (odp_pktin_event_queue (pktio, &inq, 1) != 1))
+  while (req_pkts)
     {
-      clib_warning ("Error:no input queue");
-      return 0;
-    }
-
-  while (num_evts < VLIB_FRAME_SIZE)
-    {
-      if (inq != ODP_QUEUE_INVALID)
-	i = odp_queue_deq_multi (inq, &evt_tbl[num_evts],
-				 VLIB_FRAME_SIZE - num_evts);
+      if (oif->mode == APPL_MODE_PKT_QUEUE)
+	{
+	  i = odp_queue_deq_multi (oif->rxq[queue_id],
+				   &evt_tbl[num_evts], req_pkts);
+	}
       else
-	i = odp_schedule_multi (NULL, sched_wait, &evt_tbl[num_evts],
-				VLIB_FRAME_SIZE - num_evts);
+	{
+	  sched_wait = odp_schedule_wait_time (ODP_TIME_USEC_IN_NS);
+	  i = odp_schedule_multi (NULL, sched_wait,
+				  &evt_tbl[num_evts], req_pkts);
+	}
       if (i <= 0)
 	break;
       num_evts += i;
+      req_pkts -= i;
     }
 
   /* convert events to packets, discarding any non-packet events */
-  for (i = 0; i < num_evts; ++i)
+  for (i = 0; i < num_evts; i++)
     {
       if (odp_event_type (evt_tbl[i]) == ODP_EVENT_PACKET)
 	pkt_tbl[num_pkts++] = odp_packet_from_event (evt_tbl[i]);
@@ -114,25 +119,20 @@ odp_packet_queue_mode (odp_pktio_t pktio, u32 mode, odp_packet_t pkt_tbl[])
 }
 
 always_inline int
-odp_packet_burst_mode (odp_pktio_t pktio, odp_pktin_queue_t pktin,
-		       odp_packet_t pkt_tbl[], u32 req_pkts)
+odp_packet_burst_mode (odp_packet_if_t * oif, odp_packet_t pkt_tbl[],
+		       u32 queue_id, u32 req_pkts)
 {
   u32 num_pkts = 0;
   int ret;
+  odp_pktin_queue_t inq = oif->inq[queue_id];
 
-  if (odp_pktin_queue (pktio, &pktin, 1) != 1)
+  while (req_pkts)
     {
-      clib_warning ("odp_pktio_open() failed: no pktin queue");
-      return 0;
-    }
-
-  while (num_pkts < req_pkts)
-    {
-      ret = odp_pktin_recv (pktin, &pkt_tbl[num_pkts],
-			    req_pkts - num_pkts);
+      ret = odp_pktin_recv (inq, &pkt_tbl[num_pkts], req_pkts);
       if (ret <= 0)
 	break;
       num_pkts += ret;
+      req_pkts -= ret;
     }
 
   return num_pkts;
@@ -211,44 +211,40 @@ odp_trace_buffer_x4 (uword * n_trace, vlib_main_t * vm,
 
 always_inline uword
 odp_packet_device_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
-			    vlib_frame_t * frame, odp_packet_if_t * oif)
+			    vlib_frame_t * frame, odp_packet_if_t * oif,
+			    u32 queue_id)
 {
   u32 next_index = VNET_DEVICE_INPUT_NEXT_ETHERNET_INPUT;
   uword n_trace = vlib_get_trace_count (vm, node);
   u32 n_rx_packets = 0;
   u32 n_rx_bytes = 0;
   u32 *to_next = 0;
-  odp_pktin_queue_t pktin = { 0 };
   odp_packet_t pkt_tbl[VLIB_FRAME_SIZE];
   int pkts = 0, i;
-  u32 retry = 8;
-  u32 n_left = 0, n_left_to_next = VLIB_FRAME_SIZE;
+  int n_left = 0, n_left_to_next = VLIB_FRAME_SIZE;
   u32 next0 = next_index;
   u32 next1 = next_index;
   u32 next2 = next_index;
   u32 next3 = next_index;
 
-  while (1)
+  do
     {
       if ((oif->mode == (APPL_MODE_PKT_QUEUE)) ||
 	  (oif->mode == (APPL_MODE_PKT_SCHED)))
 	{
-	  pkts = odp_packet_queue_mode (oif->pktio, oif->mode, pkt_tbl);
+	  pkts =
+	    odp_packet_queue_mode (oif, pkt_tbl, queue_id, n_left_to_next);
 	}
       else
 	{
-	  pkts = odp_packet_burst_mode (oif->pktio, pktin, pkt_tbl,
-					n_left_to_next);
+	  pkts =
+	    odp_packet_burst_mode (oif, pkt_tbl, queue_id, n_left_to_next);
 	}
 
       n_left = drop_err_pkts (pkt_tbl, pkts);
       if (n_left == 0)
-	{
-	  if (retry--)
-	    continue;
-	  else
-	    break;
-	}
+	break;
+
       i = 0;
 
       if (n_rx_packets == 0)
@@ -360,10 +356,8 @@ odp_packet_device_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  n_left--;
 	  n_rx_packets++;
 	}
-
-      if (n_left_to_next < 4)
-	break;
     }
+  while (0);
 
   if (n_rx_packets)
     {
@@ -397,7 +391,8 @@ odp_packet_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
   {
     oif = pool_elt_at_index (om->interfaces, dq->dev_instance);
     if (oif->is_admin_up)
-      n_rx_packets += odp_packet_device_input_fn (vm, node, frame, oif);
+      n_rx_packets += odp_packet_device_input_fn (vm, node, frame, oif,
+						  dq->queue_id);
   }
 
   return n_rx_packets;

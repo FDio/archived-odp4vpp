@@ -77,21 +77,17 @@ odp_packet_interface_tx (vlib_main_t * vm,
   u32 n_left = frame->n_vectors;
   vnet_interface_output_runtime_t *rd = (void *) node->runtime_data;
   odp_packet_if_t *oif = pool_elt_at_index (om->interfaces, rd->dev_instance);
-  odp_pktout_queue_t pktout;
+  uword queue_index = vlib_get_thread_index () % oif->tx_queues;
+  u32 mode = oif->mode;
   odp_packet_t pkt_tbl[VLIB_FRAME_SIZE];
-  u32 sent, count = 0;
+  odp_event_t evt_tbl[VLIB_FRAME_SIZE];
   vlib_buffer_t *b0;
-  u32 bi;
+  u32 bi, sent, count = 0;
 
   if (PREDICT_FALSE (oif->lockp != 0))
     {
       while (__sync_lock_test_and_set (oif->lockp, 1))
 	;
-    }
-
-  if (odp_pktout_queue (oif->pktio, &pktout, 1) != 1)
-    {
-      return -1;
     }
 
   while (n_left > 0)
@@ -121,6 +117,8 @@ odp_packet_interface_tx (vlib_main_t * vm,
 	  else if (diff < 0)
 	    odp_packet_pull_tail (pkt, -diff);
 	  pkt_tbl[count] = pkt;
+	  if (mode == APPL_MODE_PKT_QUEUE)
+	    evt_tbl[count] = odp_packet_to_event (pkt_tbl[count]);
 	  count++;
 	  bi = b0->next_buffer;
 	}
@@ -133,7 +131,22 @@ odp_packet_interface_tx (vlib_main_t * vm,
       sent = 0;
       while (count > 0)
 	{
-	  ret = odp_pktout_send (pktout, &pkt_tbl[sent], count);
+	  switch (mode)
+	    {
+	    case APPL_MODE_PKT_SCHED:
+	    case APPL_MODE_PKT_BURST:
+	      ret =
+		odp_pktout_send (oif->outq[queue_index], &pkt_tbl[sent],
+				 count);
+	      break;
+	    case APPL_MODE_PKT_QUEUE:
+	      ret = odp_queue_enq_multi (oif->txq[queue_index],
+					 &evt_tbl[sent], count);
+	      break;
+	    default:
+	      ret = 0;
+	      clib_error ("Invalid mode\n");
+	    }
 	  if (odp_unlikely (ret <= 0))
 	    {
 	      /* Drop one packet and try again */

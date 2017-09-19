@@ -26,7 +26,8 @@ odp_packet_create_command_fn (vlib_main_t * vm, unformat_input_t * input,
   u8 hwaddr[6];
   u8 *hw_addr_ptr = 0;
   u32 sw_if_index;
-  u32 mode = 0;
+  u32 mode = APPL_MODE_PKT_BURST;
+  u32 rx_queues = 0;
   int r;
 
   if (!unformat_user (input, unformat_line_input, line_input))
@@ -43,6 +44,8 @@ odp_packet_create_command_fn (vlib_main_t * vm, unformat_input_t * input,
 	hw_addr_ptr = hwaddr;
       else if (unformat (line_input, "mode %d", &mode))
 	;
+      else if (unformat (line_input, "rx-queues %d", &rx_queues))
+	;
       else
 	return clib_error_return (0, "unknown input `%U'",
 				  format_unformat_error, input);
@@ -52,8 +55,8 @@ odp_packet_create_command_fn (vlib_main_t * vm, unformat_input_t * input,
   if (host_if_name == NULL)
     return clib_error_return (0, "missing host interface name");
 
-  r =
-    odp_packet_create_if (vm, host_if_name, hw_addr_ptr, &sw_if_index, mode);
+  r = odp_packet_create_if (vm, host_if_name, hw_addr_ptr, &sw_if_index,
+			    mode, rx_queues);
   vec_free (host_if_name);
 
   if (r == VNET_API_ERROR_SYSCALL_ERROR_1)

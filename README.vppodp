@@ -74,8 +74,9 @@ Below is a basic verification test.
 Note :For odp-dpdk the port has to bound with dpdk driver prior to test and interface name is passed as 0,1..etc.
 
 1)Configure odp packet interface with mode ie (0-burst,1-queue,2-schedule) default mode is 0.
+  Setting rx-queues to more than 1 will enable RSS.
 
--create pktio-interface name <int name> hw-addr <mac> mode <0/1/2>
+-create pktio-interface name <int name> hw-addr <mac> mode <0/1/2> rx-queues <number of input queues>
 -set int ip address odp-<int name> X.X.X.X/24
 -set int state odp-<int name> up
 

@@ -61,7 +61,8 @@ drop_err_pkts (odp_packet_t pkt_tbl[], unsigned len)
 }
 
 static odp_pktio_t
-create_pktio (const char *dev, odp_pool_t pool, u32 mode)
+create_pktio (const char *dev, odp_pool_t pool, u32 mode,
+	      odp_packet_if_t * oif)
 {
   odp_pktio_t pktio;
   int ret;
@@ -69,6 +70,8 @@ create_pktio (const char *dev, odp_pool_t pool, u32 mode)
   odp_pktin_queue_param_t pktin_param;
   odp_pktout_queue_param_t pktout_param;
   odp_pktio_config_t pktio_config;
+  vlib_thread_main_t *tm = vlib_get_thread_main ();
+  odp_pktio_capability_t capa;
 
   odp_pktio_param_init (&pktio_param);
 
@@ -76,12 +79,15 @@ create_pktio (const char *dev, odp_pool_t pool, u32 mode)
     {
     case APPL_MODE_PKT_BURST:
       pktio_param.in_mode = ODP_PKTIN_MODE_DIRECT;
+      pktio_param.out_mode = ODP_PKTOUT_MODE_DIRECT;
       break;
     case APPL_MODE_PKT_QUEUE:
       pktio_param.in_mode = ODP_PKTIN_MODE_QUEUE;
+      pktio_param.out_mode = ODP_PKTOUT_MODE_QUEUE;
       break;
     case APPL_MODE_PKT_SCHED:
       pktio_param.in_mode = ODP_PKTIN_MODE_SCHED;
+      pktio_param.out_mode = ODP_PKTOUT_MODE_DIRECT;
       break;
     default:
       clib_warning ("Invalid mode\n");
@@ -93,6 +99,13 @@ create_pktio (const char *dev, odp_pool_t pool, u32 mode)
   if (pktio == ODP_PKTIO_INVALID)
     {
       clib_warning ("Error: pktio create failed for %s", dev);
+      return 0;
+    }
+
+  if (odp_pktio_capability (pktio, &capa))
+    {
+      clib_warning ("Error: capability query failed %s\n", dev);
+      return 0;
     }
 
   odp_pktio_config_init (&pktio_config);
@@ -100,8 +113,28 @@ create_pktio (const char *dev, odp_pool_t pool, u32 mode)
   odp_pktio_config (pktio, &pktio_config);
 
   odp_pktin_queue_param_init (&pktin_param);
-  pktin_param.classifier_enable = 0;
   pktin_param.op_mode = ODP_PKTIO_OP_MT_UNSAFE;
+
+  if (oif->rx_queues > capa.max_input_queues)
+    {
+      oif->rx_queues = capa.max_input_queues;
+      clib_warning ("Number of RX queues limited to %d\n", oif->rx_queues);
+    }
+
+  if (oif->rx_queues > 1)
+    {
+      if (oif->rx_queues > MAX_QUEUES)
+	oif->rx_queues = MAX_QUEUES;
+
+      pktin_param.classifier_enable = 0;
+      pktin_param.hash_enable = 1;
+      pktin_param.num_queues = oif->rx_queues;
+      pktin_param.hash_proto.proto.ipv4_udp = 1;
+      pktin_param.hash_proto.proto.ipv4_tcp = 1;
+      pktin_param.hash_proto.proto.ipv4 = 1;
+    }
+  else
+    oif->rx_queues = 1;
 
   if (mode == APPL_MODE_PKT_SCHED)
     pktin_param.queue_param.sched.sync = ODP_SCHED_SYNC_ATOMIC;
@@ -112,9 +145,16 @@ create_pktio (const char *dev, odp_pool_t pool, u32 mode)
     }
 
   odp_pktout_queue_param_init (&pktout_param);
-  /* TODO use multiple output queue and no synchronization
-     pktout_param.op_mode = ODP_PKTIO_OP_MT_UNSAFE;
-   */
+  if (capa.max_output_queues >= tm->n_vlib_mains)
+    {
+      pktout_param.op_mode = ODP_PKTIO_OP_MT_UNSAFE;
+      pktout_param.num_queues = tm->n_vlib_mains;
+      oif->tx_queues = tm->n_vlib_mains;
+    }
+  else
+    {
+      oif->tx_queues = 1;
+    }
 
   if (odp_pktout_queue_config (pktio, &pktout_param))
     {
@@ -132,10 +172,10 @@ create_pktio (const char *dev, odp_pool_t pool, u32 mode)
 
 u32
 odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
-		      u32 * sw_if_index, u32 mode)
+		      u32 * sw_if_index, u32 mode, u32 rx_queues)
 {
   odp_packet_main_t *om = odp_packet_main;
-  int ret = 0;
+  int ret = 0, j;
   odp_packet_if_t *oif = 0;
   u8 hw_addr[6];
   clib_error_t *error = 0;
@@ -154,8 +194,13 @@ odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
   oif->host_if_name = host_if_name_dup;
   oif->per_interface_next_index = ~0;
 
+  if (mode == APPL_MODE_PKT_SCHED)
+    oif->rx_queues = tm->n_vlib_mains - 1;
+  else
+    oif->rx_queues = rx_queues;
+
   /* Create a pktio instance */
-  oif->pktio = create_pktio ((char *) host_if_name, om->pool, mode);
+  oif->pktio = create_pktio ((char *) host_if_name, om->pool, mode, oif);
   oif->mode = mode;
   om->if_count++;
 
@@ -164,6 +209,17 @@ odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
       oif->lockp = clib_mem_alloc_aligned (CLIB_CACHE_LINE_BYTES,
 					   CLIB_CACHE_LINE_BYTES);
       memset ((void *) oif->lockp, 0, CLIB_CACHE_LINE_BYTES);
+    }
+
+  if ((mode == APPL_MODE_PKT_BURST) || (mode == APPL_MODE_PKT_SCHED))
+    {
+      odp_pktin_queue (oif->pktio, oif->inq, oif->rx_queues);
+      odp_pktout_queue (oif->pktio, oif->outq, oif->tx_queues);
+    }
+  else if (mode == APPL_MODE_PKT_QUEUE)
+    {
+      odp_pktin_event_queue (oif->pktio, oif->rxq, oif->rx_queues);
+      odp_pktout_event_queue (oif->pktio, oif->txq, oif->tx_queues);
     }
 
   /*use configured or generate random MAC address */
@@ -208,8 +264,14 @@ odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
   if (sw_if_index)
     *sw_if_index = oif->sw_if_index;
 
-  /* Assign queue 0 of the new interface to first available worker thread */
-  vnet_hw_interface_assign_rx_thread (vnm, oif->hw_if_index, 0, ~0);
+  /* Assign queues of the new interface to first available worker thread */
+  for (j = 0; j < oif->rx_queues; j++)
+    {
+      if (mode == APPL_MODE_PKT_SCHED)
+	vnet_hw_interface_assign_rx_thread (vnm, oif->hw_if_index, 0, j + 1);
+      else
+	vnet_hw_interface_assign_rx_thread (vnm, oif->hw_if_index, j, -1);
+    }
 
   return 0;
 
