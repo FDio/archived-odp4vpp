@@ -21,7 +21,9 @@
 
 #include <odp/ipsec/ipsec.h>
 #include <odp/ipsec/esp.h>
+#include <odp/odp_packet.h>
 
+#include <assert.h>
 
 #define foreach_esp_encrypt_next                   \
 _(DROP, "error-drop")                              \
@@ -121,13 +123,14 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 
       while (n_left_from > 0 && n_left_to_next > 0)
 	{
-	  u32 i_bi0, o_bi0, next0;
-	  vlib_buffer_t *i_b0, *o_b0 = 0;
+	  u32 bi0, next0;
+	  vlib_buffer_t *b0 = 0;
 	  u32 sa_index0;
 	  ipsec_sa_t *sa0;
 	  ip4_and_esp_header_t *ih0, *oh0 = 0;
 	  ip6_and_esp_header_t *ih6_0, *oh6_0 = 0;
-	  uword last_empty_buffer;
+	  ip4_header_t old_ip4_hdr;
+	  ethernet_header_t old_eth_hdr;
 	  esp_footer_t *f0;
 	  u8 is_ipv6;
 	  u8 ip_hdr_size;
@@ -136,15 +139,15 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	  u8 transport_mode = 0;
 	  sa_data_t *sa_sess_data;
 
-	  i_bi0 = from[0];
+	  bi0 = from[0];
 	  from += 1;
 	  n_left_from -= 1;
 	  n_left_to_next -= 1;
 
 	  next0 = ESP_ENCRYPT_NEXT_DROP;
 
-	  i_b0 = vlib_get_buffer (vm, i_bi0);
-	  sa_index0 = vnet_buffer (i_b0)->ipsec.sad_index;
+	  b0 = vlib_get_buffer (vm, bi0);
+	  sa_index0 = vnet_buffer (b0)->ipsec.sad_index;
 	  sa0 = pool_elt_at_index (im->sad, sa_index0);
 
 	  if (PREDICT_FALSE (esp_seq_advance (sa0)))
@@ -154,27 +157,19 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	      vlib_node_increment_counter (vm, odp_crypto_esp_encrypt_node.index,
 					   ESP_ENCRYPT_ERROR_SEQ_CYCLED, 1);
 	      //TODO: rekey SA
-	      o_bi0 = i_bi0;
-	      to_next[0] = o_bi0;
+	      to_next[0] = bi0;
 	      to_next += 1;
 	      goto trace;
 	    }
 
-	  sa0->total_data_size += i_b0->current_length;
+	  sa0->total_data_size += b0->current_length;
 
-	  /* grab free buffer */
-	  last_empty_buffer = vec_len (empty_buffers) - 1;
-	  o_bi0 = empty_buffers[last_empty_buffer];
-	  o_b0 = vlib_get_buffer (vm, o_bi0);
-	  o_b0->flags = VLIB_BUFFER_TOTAL_LENGTH_VALID;
-	  o_b0->current_data = sizeof (ethernet_header_t);
-	  ih0 = vlib_buffer_get_current (i_b0);
-	  vlib_prefetch_buffer_with_index (vm,
-					   empty_buffers[last_empty_buffer -
-							 1], STORE);
-	  _vec_len (empty_buffers) = last_empty_buffer;
-	  to_next[0] = o_bi0;
-	  to_next += 1;
+	  ih0 = vlib_buffer_get_current (b0);
+
+	  old_eth_hdr = *((ethernet_header_t *)
+			  ((u8 *) vlib_buffer_get_current (b0) -
+			   sizeof (ethernet_header_t)));
+	  old_ip4_hdr = *((ip4_header_t *) vlib_buffer_get_current (b0));
 
 	  sa_sess_data = pool_elt_at_index (cwm->sa_sess_d[1], sa_index0);
 	  if (PREDICT_FALSE (!(sa_sess_data->sess)))
@@ -183,24 +178,48 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 
 	      if (ret)
 		{
-		  to_next[0] = i_bi0;
+		  to_next[0] = bi0;
 		  to_next += 1;
 		  goto trace;
 		}
 	    }
 
-	  /* add old buffer to the recycle list */
-	  vec_add1 (recycle, i_bi0);
+	  if (PREDICT_FALSE
+	      ((ih0->ip4.ip_version_and_header_length & 0xF0) == 0x60))
+	    {
+	      ip_hdr_size = sizeof (ip6_header_t);
+	    }
+	  else
+	    {
+	      ip_hdr_size = sizeof (ip4_header_t);
+	    }
+
+	  odp_packet_t pkt = odp_packet_from_vlib_buffer (b0);
+
+	  const int IV_SIZE = 16;
+	  int push_head_by = sizeof (esp_header_t) + IV_SIZE;
+
+	  if (sa0->is_tunnel)
+	    push_head_by += ip_hdr_size;
+	  vlib_buffer_advance (b0, -push_head_by);
+
+	  odp_adjust_data_pointers (b0, pkt);
+
+	  to_next[0] = bi0;
+	  to_next += 1;
 
 	  /* is ipv6 */
 	  if (PREDICT_FALSE
 	      ((ih0->ip4.ip_version_and_header_length & 0xF0) == 0x60))
 	    {
+	      // TODO not supported
+	      assert (0);
+
 	      is_ipv6 = 1;
-	      ih6_0 = vlib_buffer_get_current (i_b0);
+	      ih6_0 = vlib_buffer_get_current (b0);
 	      ip_hdr_size = sizeof (ip6_header_t);
 	      next_hdr_type = IP_PROTOCOL_IPV6;
-	      oh6_0 = vlib_buffer_get_current (o_b0);
+	      oh6_0 = vlib_buffer_get_current (b0);
 
 	      oh6_0->ip6.ip_version_traffic_class_and_flow_label =
 		ih6_0->ip6.ip_version_traffic_class_and_flow_label;
@@ -225,19 +244,19 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	      is_ipv6 = 0;
 	      ip_hdr_size = sizeof (ip4_header_t);
 	      next_hdr_type = IP_PROTOCOL_IP_IN_IP;
-	      oh0 = vlib_buffer_get_current (o_b0);
+	      oh0 = vlib_buffer_get_current (b0);
 
 	      oh0->ip4.ip_version_and_header_length = 0x45;
-	      oh0->ip4.tos = ih0->ip4.tos;
+	      oh0->ip4.tos = old_ip4_hdr.tos;
 	      oh0->ip4.fragment_id = 0;
 	      oh0->ip4.flags_and_fragment_offset = 0;
 	      oh0->ip4.ttl = 254;
 	      oh0->ip4.protocol = IP_PROTOCOL_IPSEC_ESP;
-	      oh0->ip4.src_address.as_u32 = ih0->ip4.src_address.as_u32;
-	      oh0->ip4.dst_address.as_u32 = ih0->ip4.dst_address.as_u32;
+	      oh0->ip4.src_address.as_u32 = old_ip4_hdr.src_address.as_u32;
+	      oh0->ip4.dst_address.as_u32 = old_ip4_hdr.dst_address.as_u32;
 	      oh0->esp.spi = clib_net_to_host_u32 (sa0->spi);
 	      oh0->esp.seq = clib_net_to_host_u32 (sa0->seq);
-	      ip_proto = ih0->ip4.protocol;
+	      ip_proto = old_ip4_hdr.protocol;
 
 	      next0 = ESP_ENCRYPT_NEXT_IP4_LOOKUP;
 	    }
@@ -245,13 +264,19 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	  if (PREDICT_TRUE
 	      (!is_ipv6 && sa0->is_tunnel && !sa0->is_tunnel_ip6))
 	    {
+	      // TODO not supported
+	      assert (0);
+
 	      oh0->ip4.src_address.as_u32 = sa0->tunnel_src_addr.ip4.as_u32;
 	      oh0->ip4.dst_address.as_u32 = sa0->tunnel_dst_addr.ip4.as_u32;
 
-	      vnet_buffer (o_b0)->sw_if_index[VLIB_TX] = (u32) ~ 0;
+	      vnet_buffer (b0)->sw_if_index[VLIB_TX] = (u32) ~ 0;
 	    }
 	  else if (is_ipv6 && sa0->is_tunnel && sa0->is_tunnel_ip6)
 	    {
+	      // TODO not supported
+	      assert (0);
+
 	      oh6_0->ip6.src_address.as_u64[0] =
 		sa0->tunnel_src_addr.ip6.as_u64[0];
 	      oh6_0->ip6.src_address.as_u64[1] =
@@ -261,56 +286,52 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	      oh6_0->ip6.dst_address.as_u64[1] =
 		sa0->tunnel_dst_addr.ip6.as_u64[1];
 
-	      vnet_buffer (o_b0)->sw_if_index[VLIB_TX] = (u32) ~ 0;
+	      vnet_buffer (b0)->sw_if_index[VLIB_TX] = (u32) ~ 0;
 	    }
 	  else
 	    {
 	      next_hdr_type = ip_proto;
-	      if (vnet_buffer (i_b0)->sw_if_index[VLIB_TX] != ~0)
+	      if (vnet_buffer (b0)->sw_if_index[VLIB_TX] != ~0)
 		{
 		  transport_mode = 1;
 		  ethernet_header_t *ieh0, *oeh0;
-		  ieh0 =
-		    (ethernet_header_t *) ((u8 *)
-					   vlib_buffer_get_current (i_b0) -
+		  ieh0 = &old_eth_hdr;
+		  oeh0 =
+		    (ethernet_header_t *) ((uintptr_t)
+					   vlib_buffer_get_current (b0) -
 					   sizeof (ethernet_header_t));
-		  oeh0 = (ethernet_header_t *) o_b0->data;
 		  clib_memcpy (oeh0, ieh0, sizeof (ethernet_header_t));
 		  next0 = ESP_ENCRYPT_NEXT_INTERFACE_OUTPUT;
-		  vnet_buffer (o_b0)->sw_if_index[VLIB_TX] =
-		    vnet_buffer (i_b0)->sw_if_index[VLIB_TX];
 		}
-	      vlib_buffer_advance (i_b0, ip_hdr_size);
+	      vlib_buffer_advance (b0, ip_hdr_size);
 	    }
 
 	  ASSERT (sa0->crypto_alg < IPSEC_CRYPTO_N_ALG);
 
 	  if (PREDICT_TRUE (sa0->crypto_alg != IPSEC_CRYPTO_ALG_NONE))
 	    {
-
+	      b0->current_length -= push_head_by;
 	      const int BLOCK_SIZE = 16;
-	      const int IV_SIZE = 16;
-	      int blocks = 1 + (i_b0->current_length + 1) / BLOCK_SIZE;
+	      int blocks = 1 + (b0->current_length + 1) / BLOCK_SIZE;
 
 	      /* pad packet in input buffer */
-	      u8 pad_bytes = BLOCK_SIZE * blocks - 2 - i_b0->current_length;
+	      u8 pad_bytes = BLOCK_SIZE * blocks - 2 - b0->current_length;
 	      u8 i;
 	      u8 *padding =
-		vlib_buffer_get_current (i_b0) + i_b0->current_length;
-	      i_b0->current_length = BLOCK_SIZE * blocks;
+		vlib_buffer_get_current (b0) + b0->current_length +
+		push_head_by;
+	      b0->current_length = BLOCK_SIZE * blocks;
 	      for (i = 0; i < pad_bytes; ++i)
 		{
 		  padding[i] = i + 1;
 		}
-	      f0 = vlib_buffer_get_current (i_b0) + i_b0->current_length - 2;
+	      f0 = vlib_buffer_get_current (b0) + b0->current_length - 2 +
+		push_head_by;
 	      f0->pad_length = pad_bytes;
 	      f0->next_header = next_hdr_type;
 
-	      o_b0->current_length = ip_hdr_size + sizeof (esp_header_t) +
-		BLOCK_SIZE * blocks + IV_SIZE;
-
-	      vnet_buffer (o_b0)->sw_if_index[VLIB_RX] =
-		vnet_buffer (i_b0)->sw_if_index[VLIB_RX];
+	      b0->current_length = ip_hdr_size +
+		BLOCK_SIZE * blocks + sizeof (esp_header_t) + IV_SIZE;
 
 	      odp_crypto_op_param_t crypto_op_params;
 	      odp_bool_t posted = 0;
@@ -320,42 +341,36 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	      crypto_op_params.ctx = NULL;
 	      crypto_op_params.aad.ptr = NULL;
 	      crypto_op_params.aad.length = 0;
-	      crypto_op_params.pkt =
-		(odp_packet_t) ((u8 *) o_b0 -
-				(u8 *) odp_packet_user_area ((odp_packet_t)
-							     0x0));
-	      crypto_op_params.out_pkt = crypto_op_params.pkt;
+	      crypto_op_params.pkt = pkt;
+	      crypto_op_params.out_pkt = pkt;
 
 	      crypto_op_params.override_iv_ptr = sa_sess_data->iv_data;
 
-	      crypto_op_params.cipher_range.offset =
-		(u32) ((u8 *) vlib_buffer_get_current (o_b0) - (u8 *) o_b0) -
-		sizeof (vlib_buffer_t) + ip_hdr_size + sizeof (esp_header_t) +
-		IV_SIZE;
-
+	      int odp_offset_to_esp = ip_hdr_size,
+		odp_offset_to_payload =
+		sizeof (esp_header_t) + IV_SIZE + ip_hdr_size;
+	      crypto_op_params.cipher_range.offset = odp_offset_to_payload;
 	      crypto_op_params.cipher_range.length = BLOCK_SIZE * blocks;
 
-	      crypto_op_params.auth_range.offset =
-		(u32) ((u8 *) vlib_buffer_get_current (o_b0) - (u8 *) o_b0) -
-		sizeof (vlib_buffer_t) + ip_hdr_size;
+	      crypto_op_params.auth_range.offset = odp_offset_to_esp;
 	      crypto_op_params.auth_range.length =
-		o_b0->current_length - ip_hdr_size;
+		b0->current_length - ip_hdr_size;
 	      crypto_op_params.hash_result_offset =
-		(u32) ((u8 *) vlib_buffer_get_current (o_b0) - (u8 *) o_b0) -
-		sizeof (vlib_buffer_t) + o_b0->current_length;
+		odp_offset_to_payload + BLOCK_SIZE * blocks;
 
-	      clib_memcpy ((u8 *) vlib_buffer_get_current (o_b0) +
-			   ip_hdr_size + sizeof (esp_header_t) + IV_SIZE,
-			   (u8 *) vlib_buffer_get_current (i_b0),
-			   BLOCK_SIZE * blocks);
-
-	      clib_memcpy ((u8 *) vlib_buffer_get_current (o_b0) +
-			   ip_hdr_size + sizeof (esp_header_t),
+	      clib_memcpy ((u8 *) vlib_buffer_get_current (b0) +
+			   ((int) push_head_by - (int) IV_SIZE),
 			   sa_sess_data->iv_data,
 			   sizeof (sa_sess_data->iv_data));
 
-	      o_b0->current_length +=
+	      int push_tail_by =
+		b0->current_length - odp_packet_len (pkt) +
+		sa_sess_data->digest_size;
+	      odp_packet_push_tail (pkt, push_tail_by);
+
+	      b0->current_length +=
 		em->esp_integ_algs[sa0->integ_alg].trunc_size;
+
 	      int ret =
 		odp_crypto_operation (&crypto_op_params, &posted, &result);
 	      if (ret != 0)
@@ -368,37 +383,37 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	  if (PREDICT_FALSE (is_ipv6))
 	    {
 	      oh6_0->ip6.payload_length =
-		clib_host_to_net_u16 (vlib_buffer_length_in_chain (vm, o_b0) -
+		clib_host_to_net_u16 (vlib_buffer_length_in_chain (vm, b0) -
 				      sizeof (ip6_header_t));
 	    }
 	  else
 	    {
 	      oh0->ip4.length =
-		clib_host_to_net_u16 (vlib_buffer_length_in_chain (vm, o_b0));
+		clib_host_to_net_u16 (vlib_buffer_length_in_chain (vm, b0));
 	      oh0->ip4.checksum = ip4_header_checksum (&oh0->ip4);
 	    }
 
 	  if (transport_mode)
-	    vlib_buffer_reset (o_b0);
+	    {
+	      b0->current_data -= sizeof (ethernet_header_t) + ip_hdr_size;
+	      b0->current_length += sizeof (ethernet_header_t);
+	    }
 
 	trace:
-	  if (PREDICT_FALSE (i_b0->flags & VLIB_BUFFER_IS_TRACED))
+	  if (PREDICT_FALSE (b0->flags & VLIB_BUFFER_IS_TRACED))
 	    {
-	      if (o_b0)
-		{
-		  o_b0->flags |= VLIB_BUFFER_IS_TRACED;
-		  o_b0->trace_index = i_b0->trace_index;
-		  esp_encrypt_trace_t *tr =
-		    vlib_add_trace (vm, node, o_b0, sizeof (*tr));
-		  tr->spi = sa0->spi;
-		  tr->seq = sa0->seq - 1;
-		  tr->crypto_alg = sa0->crypto_alg;
-		  tr->integ_alg = sa0->integ_alg;
-		}
+	      b0->flags |= VLIB_BUFFER_IS_TRACED;
+	      b0->trace_index = b0->trace_index;
+	      esp_encrypt_trace_t *tr =
+		vlib_add_trace (vm, node, b0, sizeof (*tr));
+	      tr->spi = sa0->spi;
+	      tr->seq = sa0->seq - 1;
+	      tr->crypto_alg = sa0->crypto_alg;
+	      tr->integ_alg = sa0->integ_alg;
 	    }
 
 	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
-					   to_next, n_left_to_next, o_bi0,
+					   to_next, n_left_to_next, bi0,
 					   next0);
 	}
       vlib_put_next_frame (vm, node, next_index, n_left_to_next);
