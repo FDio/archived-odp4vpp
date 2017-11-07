@@ -1,18 +1,7 @@
-/*
- *------------------------------------------------------------------
- * Copyright (c) 2016 Cisco and/or its affiliates.
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at:
+/* Copyright (c) 2017, Linaro Limited
+ * All rights reserved.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *------------------------------------------------------------------
+ * SPDX-License-Identifier:     BSD-3-Clause
  */
 
 #include <linux/if_packet.h>
@@ -70,25 +59,25 @@ format_odp_packet_tx_trace (u8 * s, va_list * args)
 
 static uword
 odp_packet_interface_tx (vlib_main_t * vm,
-			  vlib_node_runtime_t * node, vlib_frame_t * frame)
+			 vlib_node_runtime_t * node, vlib_frame_t * frame)
 {
 
   odp_packet_main_t *om = &odp_packet_main;
   u32 *buffers = vlib_frame_args (frame);
   u32 n_left = frame->n_vectors;
   vnet_interface_output_runtime_t *rd = (void *) node->runtime_data;
-  odp_packet_if_t *oif =pool_elt_at_index (om->interfaces, rd->dev_instance);
+  odp_packet_if_t *oif = pool_elt_at_index (om->interfaces, rd->dev_instance);
   odp_pktout_queue_t pktout;
   odp_packet_t pkt_tbl[VLIB_FRAME_SIZE];
-  u32 sent=0, count=0;
+  u32 sent = 0, count = 0;
 
   if (PREDICT_FALSE (oif->lockp != 0))
     {
       while (__sync_lock_test_and_set (oif->lockp, 1))
-        ;
+	;
     }
 
-  if (odp_pktout_queue(oif->pktio, &pktout, 1) != 1)
+  if (odp_pktout_queue (oif->pktio, &pktout, 1) != 1)
     {
       return -1;
     }
@@ -102,35 +91,35 @@ odp_packet_interface_tx (vlib_main_t * vm,
       buffers++;
 
       do
-        {
-          b0 = vlib_get_buffer (vm, bi);
-          len = b0->current_length;
-          pkt_tbl[count] = odp_packet_alloc(om->pool, len);
+	{
+	  b0 = vlib_get_buffer (vm, bi);
+	  len = b0->current_length;
+	  pkt_tbl[count] = odp_packet_alloc (om->pool, len);
 
-          if (pkt_tbl[count] == ODP_PACKET_INVALID)
-            {
-              clib_warning("odp packet alloc failed");
-            }
+	  if (pkt_tbl[count] == ODP_PACKET_INVALID)
+	    {
+	      clib_warning ("odp packet alloc failed");
+	    }
 
-            clib_memcpy ((u8 *) (odp_packet_data(pkt_tbl[count])),
-            vlib_buffer_get_current (b0), len);
-            count++;
-         }
+	  clib_memcpy ((u8 *) (odp_packet_data (pkt_tbl[count])),
+		       vlib_buffer_get_current (b0), len);
+	  count++;
+	}
       while ((bi = b0->next_buffer) && (count < VLIB_FRAME_SIZE));
-     }
+    }
 
   CLIB_MEMORY_BARRIER ();
 
-  sent = odp_pktout_send(pktout, pkt_tbl, count);
-  sent= sent > 0 ? sent : 0;
+  sent = odp_pktout_send (pktout, pkt_tbl, count);
+  sent = sent > 0 ? sent : 0;
 
-  if (odp_unlikely( sent < count ))
+  if (odp_unlikely (sent < count))
     {
       do
-        {
-          odp_packet_free(pkt_tbl[sent]);
-        }
-      while(++sent < count );
+	{
+	  odp_packet_free (pkt_tbl[sent]);
+	}
+      while (++sent < count);
     }
 
   if (PREDICT_FALSE (oif->lockp != 0))
@@ -143,7 +132,7 @@ odp_packet_interface_tx (vlib_main_t * vm,
 
 static void
 odp_packet_set_interface_next_node (vnet_main_t * vnm, u32 hw_if_index,
-				     u32 node_index)
+				    u32 node_index)
 {
   odp_packet_main_t *om = &odp_packet_main;
   vnet_hw_interface_t *hw = vnet_get_hw_interface (vnm, hw_if_index);
@@ -156,8 +145,8 @@ odp_packet_set_interface_next_node (vnet_main_t * vnm, u32 hw_if_index,
     }
 
   oif->per_interface_next_index =
-  vlib_node_add_next (vlib_get_main (), odp_packet_input_node.index,
-            node_index);
+    vlib_node_add_next (vlib_get_main (), odp_packet_input_node.index,
+			node_index);
 
 }
 
@@ -169,20 +158,19 @@ odp_packet_clear_hw_interface_counters (u32 instance)
 
 static clib_error_t *
 odp_packet_interface_admin_up_down (vnet_main_t * vnm, u32 hw_if_index,
-				     u32 flags)
+				    u32 flags)
 {
   odp_packet_main_t *om = &odp_packet_main;
   vnet_hw_interface_t *hw = vnet_get_hw_interface (vnm, hw_if_index);
-  odp_packet_if_t *oif =
-     pool_elt_at_index (om->interfaces, hw->dev_instance);
+  odp_packet_if_t *oif = pool_elt_at_index (om->interfaces, hw->dev_instance);
   u32 hw_flags;
 
   oif->is_admin_up = (flags & VNET_SW_INTERFACE_FLAG_ADMIN_UP) != 0;
 
   if (oif->is_admin_up)
-   hw_flags = VNET_HW_INTERFACE_FLAG_LINK_UP;
+    hw_flags = VNET_HW_INTERFACE_FLAG_LINK_UP;
   else
-   hw_flags = 0;
+    hw_flags = 0;
 
   vnet_hw_interface_set_flags (vnm, hw_if_index, hw_flags);
 
@@ -191,8 +179,8 @@ odp_packet_interface_admin_up_down (vnet_main_t * vnm, u32 hw_if_index,
 
 static clib_error_t *
 odp_packet_subif_add_del_function (vnet_main_t * vnm,
-				    u32 hw_if_index,
-				    struct vnet_sw_interface_t *st, int is_add)
+				   u32 hw_if_index,
+				   struct vnet_sw_interface_t *st, int is_add)
 {
 /* Nothing for now */
   return 0;

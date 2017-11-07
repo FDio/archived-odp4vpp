@@ -1,18 +1,7 @@
-/*
- *------------------------------------------------------------------
- * Copyright (c) 2016 Cisco and/or its affiliates.
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at:
+/* Copyright (c) 2017, Linaro Limited
+ * All rights reserved.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *------------------------------------------------------------------
+ * SPDX-License-Identifier:     BSD-3-Clause
  */
 
 #include <fcntl.h>		/* for open */
@@ -30,14 +19,14 @@
 
 static clib_error_t *
 odp_packet_create_command_fn (vlib_main_t * vm, unformat_input_t * input,
-			       vlib_cli_command_t * cmd)
+			      vlib_cli_command_t * cmd)
 {
   unformat_input_t _line_input, *line_input = &_line_input;
   u8 *host_if_name = NULL;
   u8 hwaddr[6];
   u8 *hw_addr_ptr = 0;
   u32 sw_if_index;
-  u32 mode=0;
+  u32 mode = 0;
   int r;
 
   if (!unformat_user (input, unformat_line_input, line_input))
@@ -47,15 +36,13 @@ odp_packet_create_command_fn (vlib_main_t * vm, unformat_input_t * input,
   while (unformat_check_input (line_input) != UNFORMAT_END_OF_INPUT)
     {
       if (unformat (line_input, "name %s", &host_if_name))
-      ;
+	;
       else
 	if (unformat
 	    (line_input, "hw-addr %U", unformat_ethernet_address, hwaddr))
 	hw_addr_ptr = hwaddr;
-      else
-        if (unformat
-            (line_input, "mode %d", &mode))
-      ;
+      else if (unformat (line_input, "mode %d", &mode))
+	;
       else
 	return clib_error_return (0, "unknown input `%U'",
 				  format_unformat_error, input);
@@ -65,7 +52,8 @@ odp_packet_create_command_fn (vlib_main_t * vm, unformat_input_t * input,
   if (host_if_name == NULL)
     return clib_error_return (0, "missing host interface name");
 
-  r = odp_packet_create_if (vm, host_if_name, hw_addr_ptr, &sw_if_index, mode);
+  r =
+    odp_packet_create_if (vm, host_if_name, hw_addr_ptr, &sw_if_index, mode);
   vec_free (host_if_name);
 
   if (r == VNET_API_ERROR_SYSCALL_ERROR_1)
@@ -93,21 +81,21 @@ VLIB_CLI_COMMAND (odp_packet_create_command, static) = {
 
 static clib_error_t *
 odp_packet_delete_command_fn (vlib_main_t * vm, unformat_input_t * input,
-			       vlib_cli_command_t * cmd)
+			      vlib_cli_command_t * cmd)
 {
   unformat_input_t _line_input, *line_input = &_line_input;
   u8 *host_if_name = NULL;
 
   if (!unformat_user (input, unformat_line_input, line_input))
-      return 0;
+    return 0;
 
   while (unformat_check_input (line_input) != UNFORMAT_END_OF_INPUT)
     {
       if (unformat (line_input, "name %s", &host_if_name))
-     ;
+	;
       else
-    return clib_error_return (0, "unknown input `%U'",
-                  format_unformat_error, input);
+	return clib_error_return (0, "unknown input `%U'",
+				  format_unformat_error, input);
     }
   unformat_free (line_input);
 
@@ -117,7 +105,7 @@ odp_packet_delete_command_fn (vlib_main_t * vm, unformat_input_t * input,
 
 
   odp_packet_delete_if (vm, host_if_name);
-  vec_free(host_if_name);
+  vec_free (host_if_name);
 
   return 0;
 }

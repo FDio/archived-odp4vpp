@@ -1,18 +1,7 @@
-/*
- *------------------------------------------------------------------
- * Copyright (c) 2016 Cisco and/or its affiliates.
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at:
+/* Copyright (c) 2017, Linaro Limited
+ * All rights reserved.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *------------------------------------------------------------------
+ * SPDX-License-Identifier:     BSD-3-Clause
  */
 
 #include <odp_api.h>
@@ -60,10 +49,10 @@ extern vnet_device_class_t odp_packet_device_class;
 extern vlib_node_registration_t odp_packet_input_node;
 
 u32 odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name,
-			   u8 * hw_addr_set, u32 * sw_if_index, u32 mode);
+			  u8 * hw_addr_set, u32 * sw_if_index, u32 mode);
 u32 odp_packet_delete_if (vlib_main_t * vm, u8 * host_if_name);
 
-u32 drop_err_pkts(odp_packet_t pkt_tbl[], u32 len);
+u32 drop_err_pkts (odp_packet_t pkt_tbl[], u32 len);
 
 /*
  * fd.io coding-style-patch-verification: ON
