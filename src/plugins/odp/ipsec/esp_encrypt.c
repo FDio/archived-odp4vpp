@@ -264,9 +264,6 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	  if (PREDICT_TRUE
 	      (!is_ipv6 && sa0->is_tunnel && !sa0->is_tunnel_ip6))
 	    {
-	      // TODO not supported
-	      assert (0);
-
 	      oh0->ip4.src_address.as_u32 = sa0->tunnel_src_addr.ip4.as_u32;
 	      oh0->ip4.dst_address.as_u32 = sa0->tunnel_dst_addr.ip4.as_u32;
 
@@ -349,12 +346,14 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	      int odp_offset_to_esp = ip_hdr_size,
 		odp_offset_to_payload =
 		sizeof (esp_header_t) + IV_SIZE + ip_hdr_size;
+
 	      crypto_op_params.cipher_range.offset = odp_offset_to_payload;
 	      crypto_op_params.cipher_range.length = BLOCK_SIZE * blocks;
 
 	      crypto_op_params.auth_range.offset = odp_offset_to_esp;
 	      crypto_op_params.auth_range.length =
 		b0->current_length - ip_hdr_size;
+
 	      crypto_op_params.hash_result_offset =
 		odp_offset_to_payload + BLOCK_SIZE * blocks;
 
@@ -397,6 +396,11 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	    {
 	      b0->current_data -= sizeof (ethernet_header_t) + ip_hdr_size;
 	      b0->current_length += sizeof (ethernet_header_t);
+	    }
+	  else
+	    {
+	      b0->current_data =
+		(i16) - push_head_by + sizeof (ethernet_header_t);
 	    }
 
 	trace:

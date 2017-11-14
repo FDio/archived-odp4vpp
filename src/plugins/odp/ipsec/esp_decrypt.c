@@ -278,8 +278,7 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 		}
 
 	      crypto_op_params.cipher_range.offset =
-		(u32) ((u8 *) vlib_buffer_get_current (b0) - (u8 *) b0) -
-		sizeof (vlib_buffer_t) + sizeof (esp_header_t) + IV_SIZE;
+		(u32) b0->current_data + sizeof (esp_header_t) + IV_SIZE;
 	      crypto_op_params.cipher_range.length = BLOCK_SIZE * blocks;
 	      crypto_op_params.override_iv_ptr =
 		(u8 *) vlib_buffer_get_current (b0) + sizeof (esp_header_t);
@@ -303,30 +302,39 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 
 	      old_ip_hdr =
 		*((ip4_header_t *) ((uintptr_t) vlib_buffer_get_current (b0) -
-				    ip_hdr_size));
-
-	      vlib_buffer_advance (b0, sizeof (esp_header_t) + IV_SIZE);
+				    sizeof (ip4_header_t)));
 
 	      b0->current_data =
 		sizeof (esp_header_t) + IV_SIZE + sizeof (ethernet_header_t);
-	      b0->current_length = (blocks * 16) - 2 + ip_hdr_size;
+	      b0->current_length = (blocks * BLOCK_SIZE) - 2;
+	      if (tunnel_mode)
+		b0->current_data += sizeof (ip4_header_t);
+	      else
+		b0->current_length += sizeof (ip4_header_t);
+
 	      b0->flags = VLIB_BUFFER_TOTAL_LENGTH_VALID;
 	      f0 =
 		(esp_footer_t *) ((u8 *) vlib_buffer_get_current (b0) +
 				  b0->current_length);
 	      b0->current_length -= f0->pad_length;
 
-	      odp_packet_pull_head (crypto_op_params.pkt,
-				    sizeof (esp_header_t) + IV_SIZE);
+	      if (tunnel_mode)
+		{
+		  odp_packet_pull_head (crypto_op_params.pkt,
+					sizeof (esp_header_t) + IV_SIZE +
+					ip_hdr_size);
+		}
+	      else
+		{
+		  odp_packet_pull_head (crypto_op_params.pkt,
+					sizeof (esp_header_t) + IV_SIZE);
+		}
 	      odp_packet_pull_tail (crypto_op_params.pkt,
 				    f0->pad_length + icv_size);
 
 	      /* tunnel mode */
 	      if (PREDICT_TRUE (tunnel_mode))
 		{
-		  // TODO not supported
-		  assert (0);
-
 		  if (PREDICT_TRUE (f0->next_header == IP_PROTOCOL_IP_IN_IP))
 		    {
 		      next0 = ESP_DECRYPT_NEXT_IP4_INPUT;
