@@ -28,8 +28,9 @@ odp_packet_buffer_alloc (vlib_main_t * vm, u32 * buffers, u32 n_buffers)
       if (pkt == ODP_PACKET_INVALID)
 	break;
 
-      buffers[total] = vlib_get_buffer_index (vm, odp_packet_user_area (pkt));
-      ((vlib_buffer_t *)odp_packet_user_area (pkt))->l2_priv_data = (void *)pkt;
+      buffers[total] =
+	vlib_get_buffer_index (vm, vlib_buffer_from_odp_packet (pkt));
+      ((vlib_buffer_t *) odp_packet_user_area (pkt))->l2_priv_data = pkt;
     }
   while (++total < n_buffers);
 

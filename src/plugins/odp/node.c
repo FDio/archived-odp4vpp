@@ -51,7 +51,7 @@ format_odp_packet_input_trace (u8 * s, va_list * args)
 static_always_inline void
 odp_prefetch_buffer (odp_packet_t pkt)
 {
-  vlib_buffer_t *b = (vlib_buffer_t *) odp_packet_user_area (pkt);
+  vlib_buffer_t *b = vlib_buffer_from_odp_packet (pkt);
   CLIB_PREFETCH (pkt, CLIB_CACHE_LINE_BYTES, LOAD);
   CLIB_PREFETCH (b, CLIB_CACHE_LINE_BYTES, STORE);
 }
@@ -59,7 +59,7 @@ odp_prefetch_buffer (odp_packet_t pkt)
 static_always_inline void
 odp_prefetch_ethertype (odp_packet_t pkt)
 {
-  vlib_buffer_t *b = (vlib_buffer_t *) odp_packet_user_area (pkt);
+  vlib_buffer_t *b = vlib_buffer_from_odp_packet (pkt);
   CLIB_PREFETCH (vlib_buffer_get_current (b) +
 		 STRUCT_OFFSET_OF (ethernet_header_t, type),
 		 CLIB_CACHE_LINE_BYTES, LOAD);
@@ -74,25 +74,28 @@ odp_packet_queue_mode (odp_packet_if_t * oif, odp_packet_t pkt_tbl[],
   odp_pktio_t pktio = oif->pktio;
   odp_event_t evt_tbl[req_pkts];
   u64 sched_wait;
+  odp_queue_t rxq = ODP_QUEUE_INVALID;
 
   if (pktio == ODP_PKTIO_INVALID)
     {
       clib_warning ("invalid oif->pktio value");
       return 0;
     }
-  if ((oif->m.rx_mode == APPL_MODE_PKT_QUEUE) &&
-      (oif->rxq[queue_id] == ODP_QUEUE_INVALID))
+  if (oif->m.rx_mode == APPL_MODE_PKT_QUEUE)
     {
-      clib_warning ("invalid rxq[%d] queue", queue_id);
-      return 0;
+      rxq = oif->rxq[queue_id];
+      if (rxq == ODP_QUEUE_INVALID)
+	{
+	  clib_warning ("invalid rxq[%d] queue", queue_id);
+	  return 0;
+	}
     }
 
   while (req_pkts)
     {
       if (oif->m.rx_mode == APPL_MODE_PKT_QUEUE)
 	{
-	  i = odp_queue_deq_multi (oif->rxq[queue_id],
-				   &evt_tbl[num_evts], req_pkts);
+	  i = odp_queue_deq_multi (rxq, &evt_tbl[num_evts], req_pkts);
 	}
       else
 	{
@@ -139,38 +142,20 @@ odp_packet_burst_mode (odp_packet_if_t * oif, odp_packet_t pkt_tbl[],
   return num_pkts;
 }
 
-always_inline int
-vlib_buffer_is_ip4 (vlib_buffer_t * b)
-{
-  ethernet_header_t *h = (ethernet_header_t *) vlib_buffer_get_current (b);
-  return (h->type == clib_host_to_net_u16 (ETHERNET_TYPE_IP4));
-}
-
-always_inline int
-vlib_buffer_is_ip6 (vlib_buffer_t * b)
-{
-  ethernet_header_t *h = (ethernet_header_t *) vlib_buffer_get_current (b);
-  return (h->type == clib_host_to_net_u16 (ETHERNET_TYPE_IP6));
-}
-
-always_inline int
-vlib_buffer_is_mpls (vlib_buffer_t * b)
-{
-  ethernet_header_t *h = (ethernet_header_t *) vlib_buffer_get_current (b);
-  return (h->type == clib_host_to_net_u16 (ETHERNET_TYPE_MPLS));
-}
-
 always_inline u32
 odp_rx_next_from_etype (void *mb, vlib_buffer_t * b0)
 {
-  if (PREDICT_TRUE (vlib_buffer_is_ip4 (b0)))
+  ethernet_header_t *h = (ethernet_header_t *) vlib_buffer_get_current (b0);
+  u16 type = h->type;
+
+  if (type == clib_host_to_net_u16 (ETHERNET_TYPE_IP4))
     return VNET_DEVICE_INPUT_NEXT_IP4_INPUT;
-  else if (PREDICT_TRUE (vlib_buffer_is_ip6 (b0)))
+  if (type == clib_host_to_net_u16 (ETHERNET_TYPE_IP6))
     return VNET_DEVICE_INPUT_NEXT_IP6_INPUT;
-  else if (PREDICT_TRUE (vlib_buffer_is_mpls (b0)))
+  if (type == clib_host_to_net_u16 (ETHERNET_TYPE_MPLS))
     return VNET_DEVICE_INPUT_NEXT_MPLS_INPUT;
-  else
-    return VNET_DEVICE_INPUT_NEXT_ETHERNET_INPUT;
+
+  return VNET_DEVICE_INPUT_NEXT_ETHERNET_INPUT;
 }
 
 static_always_inline void
@@ -197,7 +182,7 @@ odp_adjust_buffer (vlib_buffer_t * buf, odp_packet_t pkt,
               tr->hw_if_index = (oif)->hw_if_index;             \
             }
 
-void
+static void
 odp_trace_buffer_x4 (uword * n_trace, vlib_main_t * vm,
 		     vlib_node_runtime_t * node, odp_packet_if_t * oif,
 		     vlib_buffer_t * b0, vlib_buffer_t * b1,
@@ -221,54 +206,62 @@ odp_packet_device_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
   u32 n_rx_bytes = 0;
   u32 *to_next = 0;
   odp_packet_t pkt_tbl[VLIB_FRAME_SIZE];
-  int pkts = 0, i;
+  int i;
   int n_left = 0, n_left_to_next = VLIB_FRAME_SIZE;
-  u32 next0 = next_index;
-  u32 next1 = next_index;
-  u32 next2 = next_index;
-  u32 next3 = next_index;
+  u32 next0;
+  u32 next1;
+  u32 next2;
+  u32 next3;
 
   do
     {
       if ((oif->m.rx_mode == (APPL_MODE_PKT_QUEUE)) ||
 	  (oif->m.rx_mode == (APPL_MODE_PKT_SCHED)))
 	{
-	  pkts =
+	  n_left =
 	    odp_packet_queue_mode (oif, pkt_tbl, queue_id, n_left_to_next);
 	}
       else
 	{
-	  pkts =
+	  n_left =
 	    odp_packet_burst_mode (oif, pkt_tbl, queue_id, n_left_to_next);
 	}
 
-      n_left = drop_err_pkts (pkt_tbl, pkts);
       if (n_left == 0)
 	break;
 
       i = 0;
 
-      if (n_rx_packets == 0)
-	vlib_get_next_frame (vm, node, next_index, to_next, n_left_to_next);
+      vlib_get_next_frame (vm, node, next_index, to_next, n_left_to_next);
 
       while ((n_left >= 4) && (n_left_to_next >= 4))
 	{
 	  u32 bi0 = 0, bi1 = 0, bi2 = 0, bi3 = 0;
 	  vlib_buffer_t *b0, *b1, *b2, *b3;
+	  odp_packet_t pkt0, pkt1, pkt2, pkt3;
 
-	  b0 = (vlib_buffer_t *) odp_packet_user_area (pkt_tbl[i]);
-	  b1 = (vlib_buffer_t *) odp_packet_user_area (pkt_tbl[i + 1]);
-	  b2 = (vlib_buffer_t *) odp_packet_user_area (pkt_tbl[i + 2]);
-	  b3 = (vlib_buffer_t *) odp_packet_user_area (pkt_tbl[i + 3]);
+	  pkt0 = pkt_tbl[i++];
+	  pkt1 = pkt_tbl[i++];
+	  pkt2 = pkt_tbl[i++];
+	  pkt3 = pkt_tbl[i++];
+
+	  b0 = vlib_buffer_from_odp_packet (pkt0);
+	  b1 = vlib_buffer_from_odp_packet (pkt1);
+	  b2 = vlib_buffer_from_odp_packet (pkt2);
+	  b3 = vlib_buffer_from_odp_packet (pkt3);
 	  bi0 = vlib_get_buffer_index (vm, b0);
 	  bi1 = vlib_get_buffer_index (vm, b1);
 	  bi2 = vlib_get_buffer_index (vm, b2);
 	  bi3 = vlib_get_buffer_index (vm, b3);
+	  b0->l2_priv_data = pkt0;
+	  b1->l2_priv_data = pkt1;
+	  b2->l2_priv_data = pkt2;
+	  b3->l2_priv_data = pkt3;
 
-	  odp_adjust_buffer (b0, pkt_tbl[i], oif);
-	  odp_adjust_buffer (b1, pkt_tbl[i + 1], oif);
-	  odp_adjust_buffer (b2, pkt_tbl[i + 2], oif);
-	  odp_adjust_buffer (b3, pkt_tbl[i + 3], oif);
+	  odp_adjust_buffer (b0, pkt0, oif);
+	  odp_adjust_buffer (b1, pkt1, oif);
+	  odp_adjust_buffer (b2, pkt2, oif);
+	  odp_adjust_buffer (b3, pkt3, oif);
 
 	  if (PREDICT_FALSE (oif->per_interface_next_index != ~0))
 	    {
@@ -276,19 +269,30 @@ odp_packet_device_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 	      next1 = oif->per_interface_next_index;
 	      next2 = oif->per_interface_next_index;
 	      next3 = oif->per_interface_next_index;
+	      if (oif->per_interface_next_index !=
+		  VNET_DEVICE_INPUT_NEXT_ETHERNET_INPUT)
+		{
+		  vlib_buffer_advance (b0, sizeof (ethernet_header_t));
+		  vlib_buffer_advance (b1, sizeof (ethernet_header_t));
+		  vlib_buffer_advance (b2, sizeof (ethernet_header_t));
+		  vlib_buffer_advance (b3, sizeof (ethernet_header_t));
+		}
 	    }
 	  else
 	    {
-	      next0 = odp_rx_next_from_etype (pkt_tbl[i], b0);
-	      next1 = odp_rx_next_from_etype (pkt_tbl[i + 1], b1);
-	      next2 = odp_rx_next_from_etype (pkt_tbl[i + 2], b2);
-	      next3 = odp_rx_next_from_etype (pkt_tbl[i + 3], b3);
+	      next0 = odp_rx_next_from_etype (pkt0, b0);
+	      next1 = odp_rx_next_from_etype (pkt1, b1);
+	      next2 = odp_rx_next_from_etype (pkt2, b2);
+	      next3 = odp_rx_next_from_etype (pkt3, b3);
+	      if (next0 != VNET_DEVICE_INPUT_NEXT_ETHERNET_INPUT)
+		vlib_buffer_advance (b0, sizeof (ethernet_header_t));
+	      if (next1 != VNET_DEVICE_INPUT_NEXT_ETHERNET_INPUT)
+		vlib_buffer_advance (b1, sizeof (ethernet_header_t));
+	      if (next2 != VNET_DEVICE_INPUT_NEXT_ETHERNET_INPUT)
+		vlib_buffer_advance (b2, sizeof (ethernet_header_t));
+	      if (next3 != VNET_DEVICE_INPUT_NEXT_ETHERNET_INPUT)
+		vlib_buffer_advance (b3, sizeof (ethernet_header_t));
 	    }
-
-	  vlib_buffer_advance (b0, device_input_next_node_advance[next0]);
-	  vlib_buffer_advance (b1, device_input_next_node_advance[next1]);
-	  vlib_buffer_advance (b2, device_input_next_node_advance[next2]);
-	  vlib_buffer_advance (b3, device_input_next_node_advance[next3]);
 
 	  /* trace */
 	  if (PREDICT_FALSE ((n_trace) > 0))
@@ -312,7 +316,6 @@ odp_packet_device_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  n_rx_bytes += b1->current_length;
 	  n_rx_bytes += b2->current_length;
 	  n_rx_bytes += b3->current_length;
-	  i += 4;
 	  n_left -= 4;
 	  n_rx_packets += 4;
 	}
@@ -321,12 +324,13 @@ odp_packet_device_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 	{
 	  u32 bi0 = 0;
 	  vlib_buffer_t *b0;
+	  odp_packet_t pkt = pkt_tbl[i++];
 
-	  b0 = (vlib_buffer_t *) odp_packet_user_area (pkt_tbl[i]);
+	  b0 = vlib_buffer_from_odp_packet (pkt);
 	  bi0 = vlib_get_buffer_index (vm, b0);
-	  b0->l2_priv_data = pkt_tbl[i];
+	  b0->l2_priv_data = pkt;
 
-	  b0->current_length = odp_packet_len (pkt_tbl[i]);
+	  b0->current_length = odp_packet_len (pkt);
 	  b0->current_data = 0;
 	  b0->total_length_not_including_first_buffer = 0;
 	  b0->flags = VLIB_BUFFER_TOTAL_LENGTH_VALID;
@@ -336,9 +340,10 @@ odp_packet_device_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  if (PREDICT_FALSE (oif->per_interface_next_index != ~0))
 	    next0 = oif->per_interface_next_index;
 	  else
-	    next0 = odp_rx_next_from_etype (pkt_tbl[i], b0);
+	    next0 = odp_rx_next_from_etype (pkt, b0);
 
-	  vlib_buffer_advance (b0, device_input_next_node_advance[next0]);
+	  if (next0 != VNET_DEVICE_INPUT_NEXT_ETHERNET_INPUT)
+	    vlib_buffer_advance (b0, sizeof (ethernet_header_t));
 
 	  /* trace */
 	  ODP_TRACE_BUFFER (n_trace, b0, next0, vm, node, oif);
@@ -352,8 +357,7 @@ odp_packet_device_input_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
 					   n_left_to_next, bi0, next0);
 
 	  /* next packet */
-	  n_rx_bytes += odp_packet_len (pkt_tbl[i]);
-	  i++;
+	  n_rx_bytes += b0->current_length;
 	  n_left--;
 	  n_rx_packets++;
 	}

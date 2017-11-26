@@ -39,7 +39,6 @@ typedef struct
 {
   CLIB_CACHE_LINE_ALIGN_MARK (cacheline0);
   u8 *host_if_name;
-  volatile u32 *lockp;
   uword if_index;
   odp_pktio_t pktio;
   u32 hw_if_index;
@@ -89,11 +88,39 @@ always_inline odp_packet_t
 odp_packet_from_vlib_buffer (vlib_buffer_t * b)
 {
   odp_packet_t packet;
-  packet = (odp_packet_t)(b->l2_priv_data);
+  packet = (odp_packet_t) (b->l2_priv_data);
   if (packet == NULL)
-    clib_error("ODP packet pointer was not set properly!\n");
+    clib_error ("ODP packet pointer was not set properly!\n");
 
   return packet;
+}
+
+always_inline vlib_buffer_t *
+vlib_buffer_from_odp_packet (odp_packet_t p)
+{
+  return (vlib_buffer_t *) odp_packet_user_area (p);
+}
+
+always_inline void
+odp_adjust_data_pointers (vlib_buffer_t * b0, odp_packet_t pkt)
+{
+  int diff;
+
+  diff = ((uintptr_t) (b0->data + b0->current_data) -
+	  (uintptr_t) odp_packet_data (pkt));
+  if (diff > 0)
+    odp_packet_pull_head (pkt, diff);
+  else if (diff < 0)
+    odp_packet_push_head (pkt, -diff);
+
+  diff = b0->current_length - odp_packet_len (pkt);
+  if (diff)
+    {
+      if (diff > 0)
+	odp_packet_push_tail (pkt, diff);
+      else
+	odp_packet_pull_tail (pkt, -diff);
+    }
 }
 
 /*

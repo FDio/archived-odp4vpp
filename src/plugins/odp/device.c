@@ -67,6 +67,15 @@ format_odp_packet_tx_trace (u8 * s, va_list * args)
   return s;
 }
 
+#define NEXT_BUFFER(b0, bi, j)	\
+	  if (b0->flags & VLIB_BUFFER_NEXT_PRESENT)	\
+	    bi[j++] = b0->next_buffer;			\
+	  else if (n_left)				\
+	    {						\
+	    bi[j++] = *buffers++;			\
+	    n_left--;					\
+	    }
+
 static uword
 odp_packet_interface_tx (vlib_main_t * vm,
 			 vlib_node_runtime_t * node, vlib_frame_t * frame)
@@ -80,53 +89,88 @@ odp_packet_interface_tx (vlib_main_t * vm,
   uword queue_index = vlib_get_thread_index () % oif->m.num_tx_queues;
   u32 mode = oif->m.tx_mode;
   u32 burst_size = (tx_burst_size ? tx_burst_size : VLIB_FRAME_SIZE);
-  odp_packet_t pkt_tbl[burst_size];
-  odp_event_t evt_tbl[burst_size];
-  vlib_buffer_t *b0;
-  u32 bi, sent, count = 0;
+  union
+  {
+    odp_packet_t pkt[burst_size];
+    odp_event_t evt[burst_size];
+  } tbl;
+  vlib_buffer_t *b0, *b1, *b2, *b3;
+  u32 bi[4];
+  u32 sent, count = 0, todo = 0;
 
-  if (PREDICT_FALSE (oif->lockp != 0))
+  while (n_left > 0 || todo > 0)
     {
-      while (__sync_lock_test_and_set (oif->lockp, 1))
-	;
-    }
+      int ret;
 
-  while (n_left > 0)
-    {
-      odp_packet_t pkt;
-      int ret, diff;
+      for (; todo < 4 && todo < n_left; todo++, n_left--)
+	bi[todo] = *buffers++;
 
-      bi = buffers[0];
-      n_left--;
-      buffers++;
-
-    next_present:
-      do
+      while ((todo == 4) && (count + 3 < burst_size))
 	{
-	  b0 = vlib_get_buffer (vm, bi);
+	  odp_packet_t pkt0, pkt1, pkt2, pkt3;
+
+	  b0 = vlib_get_buffer (vm, bi[0]);
+	  b1 = vlib_get_buffer (vm, bi[1]);
+	  b2 = vlib_get_buffer (vm, bi[2]);
+	  b3 = vlib_get_buffer (vm, bi[3]);
+
+	  pkt0 = odp_packet_from_vlib_buffer (b0);
+	  pkt1 = odp_packet_from_vlib_buffer (b1);
+	  pkt2 = odp_packet_from_vlib_buffer (b2);
+	  pkt3 = odp_packet_from_vlib_buffer (b3);
+
+	  odp_adjust_data_pointers (b0, pkt0);
+	  odp_adjust_data_pointers (b1, pkt1);
+	  odp_adjust_data_pointers (b2, pkt2);
+	  odp_adjust_data_pointers (b3, pkt3);
+
+	  if (mode == APPL_MODE_PKT_QUEUE)
+	    {
+	      tbl.evt[count++] = odp_packet_to_event (pkt0);
+	      tbl.evt[count++] = odp_packet_to_event (pkt1);
+	      tbl.evt[count++] = odp_packet_to_event (pkt2);
+	      tbl.evt[count++] = odp_packet_to_event (pkt3);
+	    }
+	  else
+	    {
+	      tbl.pkt[count++] = pkt0;
+	      tbl.pkt[count++] = pkt1;
+	      tbl.pkt[count++] = pkt2;
+	      tbl.pkt[count++] = pkt3;
+	    }
+
+	  todo = 0;
+	  NEXT_BUFFER (b0, bi, todo);
+	  NEXT_BUFFER (b1, bi, todo);
+	  NEXT_BUFFER (b2, bi, todo);
+	  NEXT_BUFFER (b3, bi, todo);
+	}
+
+      while (todo && (count < burst_size))
+	{
+	  odp_packet_t pkt;
+
+	  b0 = vlib_get_buffer (vm, bi[todo - 1]);
+
 	  pkt = odp_packet_from_vlib_buffer (b0);
 
-	  diff = (uintptr_t) (b0->data + b0->current_data) -
-	    (uintptr_t) odp_packet_data (pkt);
-	  if (diff > 0)
-	    odp_packet_pull_head (pkt, diff);
-	  else if (diff < 0)
-	    odp_packet_push_head (pkt, -diff);
-	  diff = b0->current_length - odp_packet_len (pkt);
-	  if (diff > 0)
-	    odp_packet_push_tail (pkt, diff);
-	  else if (diff < 0)
-	    odp_packet_pull_tail (pkt, -diff);
-	  pkt_tbl[count] = pkt;
-	  if (mode == APPL_MODE_PKT_QUEUE)
-	    evt_tbl[count] = odp_packet_to_event (pkt_tbl[count]);
-	  count++;
-	  bi = b0->next_buffer;
-	}
-      while ((b0->flags & VLIB_BUFFER_NEXT_PRESENT) && (count < burst_size));
+	  odp_adjust_data_pointers (b0, pkt);
 
-      if ((n_left > 0) && (count < burst_size))
-	continue;
+	  if (mode == APPL_MODE_PKT_QUEUE)
+	    tbl.evt[count++] = odp_packet_to_event (pkt);
+	  else
+	    tbl.pkt[count++] = pkt;
+
+	  if (b0->flags & VLIB_BUFFER_NEXT_PRESENT)
+	    bi[todo - 1] = b0->next_buffer;
+	  else if (n_left)
+	    {
+	      bi[todo - 1] = *buffers++;
+	      n_left--;
+	    }
+	  else
+	    todo--;
+	}
 
       sent = 0;
       while (count > 0)
@@ -134,23 +178,23 @@ odp_packet_interface_tx (vlib_main_t * vm,
 	  switch (mode)
 	    {
 	    case APPL_MODE_PKT_BURST:
-	      ret =
-		odp_pktout_send (oif->outq[queue_index], &pkt_tbl[sent],
-				 count);
+	      ret = odp_pktout_send (oif->outq[queue_index], &tbl.pkt[sent],
+				     count);
 	      break;
 	    case APPL_MODE_PKT_QUEUE:
 	      ret = odp_queue_enq_multi (oif->txq[queue_index],
-					 &evt_tbl[sent], count);
+					 &tbl.evt[sent], count);
 	      break;
 	    case APPL_MODE_PKT_TM:
 	    default:
 	      ret = 0;
 	      clib_error ("Invalid mode\n");
 	    }
-	  if (odp_unlikely (ret <= 0))
+
+	  if (odp_unlikely (ret < 0))
 	    {
 	      /* Drop one packet and try again */
-	      odp_packet_free (pkt_tbl[sent]);
+	      odp_packet_free (tbl.pkt[sent]);
 	      count--;
 	      sent++;
 	    }
@@ -160,12 +204,7 @@ odp_packet_interface_tx (vlib_main_t * vm,
 	      sent += ret;
 	    }
 	}
-      if (b0->flags & VLIB_BUFFER_NEXT_PRESENT)
-	goto next_present;
     }
-
-  if (PREDICT_FALSE (oif->lockp != 0))
-    *oif->lockp = 0;
 
   return (frame->n_vectors - n_left);
 }

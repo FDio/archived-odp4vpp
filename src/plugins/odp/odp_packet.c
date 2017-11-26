@@ -30,42 +30,6 @@ odp_packet_eth_flag_change (vnet_main_t * vnm, vnet_hw_interface_t * hi,
   return 0;
 }
 
-/**
- * Drop packets which input parsing marked as containing errors.
- *
- * Frees packets with error and modifies pkt_tbl[] to only contain packets with
- * no detected errors.
- *
- * @param pkt_tbl  Array of packet
- * @param len      Length of pkt_tbl[]
- *
- * @return Number of packets with no detected error
- */
-u32
-drop_err_pkts (odp_packet_t pkt_tbl[], unsigned len)
-{
-  odp_packet_t pkt;
-  unsigned pkt_cnt = len;
-  unsigned i, j;
-
-  for (i = 0, j = 0; i < len; ++i)
-    {
-      pkt = pkt_tbl[i];
-
-      if (odp_unlikely (odp_packet_has_error (pkt)))
-	{
-	  odp_packet_free (pkt);	/* Drop */
-	  pkt_cnt--;
-	}
-      else if (odp_unlikely (i != j++))
-	{
-	  pkt_tbl[j - 1] = pkt;
-	}
-    }
-
-  return pkt_cnt;
-}
-
 static odp_pktio_t
 create_pktio (const char *dev, odp_pool_t pool, odp_packet_if_t * oif)
 {
@@ -226,13 +190,6 @@ odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
     }
 
   om->if_count++;
-
-  if (tm->n_vlib_mains > 1)
-    {
-      oif->lockp = clib_mem_alloc_aligned (CLIB_CACHE_LINE_BYTES,
-					   CLIB_CACHE_LINE_BYTES);
-      memset ((void *) oif->lockp, 0, CLIB_CACHE_LINE_BYTES);
-    }
 
   if (mode->rx_mode == APPL_MODE_PKT_BURST)
     odp_pktin_queue (oif->pktio, oif->inq, oif->m.num_rx_queues);
