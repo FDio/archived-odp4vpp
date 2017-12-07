@@ -142,14 +142,15 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 	  u32 sa_index0 = ~0;
 	  u32 seq;
 	  ip4_header_t *ih4 = 0, *oh4 = 0;
-	  ip6_header_t *ih6 = 0, *oh6 = 0;
-	  ip4_header_t old_ip_hdr;
+	  ip6_header_t *oh6 = 0;
+	  ip4_header_t old_ip4_hdr;
+	  ip6_header_t old_ip6_hdr;
 	  u8 tunnel_mode = 1;
 	  u8 transport_ip6 = 0;
 	  sa_data_t *sa_sess_data;
 	  odp_crypto_op_param_t crypto_op_params;
-	  odp_crypto_op_result_t result;
 	  odp_bool_t posted = 0;
+	  odp_crypto_op_result_t result;
 
 	  bi0 = from[0];
 	  from += 1;
@@ -209,9 +210,7 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 	  crypto_op_params.aad.length = 0;
 	  crypto_op_params.pkt = odp_packet_from_vlib_buffer (b0);
 	  crypto_op_params.out_pkt = crypto_op_params.pkt;
-
 	  crypto_op_params.override_iv_ptr = sa_sess_data->iv_data;
-
 
 	  if (PREDICT_TRUE (sa0->integ_alg != IPSEC_INTEG_ALG_NONE))
 	    {
@@ -244,6 +243,17 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 	      esp_footer_t *f0;
 	      u8 ip_hdr_size = 0;
 
+	      ih4 = (ip4_header_t *) (b0->data + sizeof (ethernet_header_t));
+	      if (PREDICT_TRUE
+		  ((ih4->ip_version_and_header_length & 0xF0) != 0x40))
+		{
+		  ip_hdr_size = sizeof (ip6_header_t);
+		}
+	      else
+		{
+		  ip_hdr_size = sizeof (ip4_header_t);
+		}
+
 	      int blocks =
 		(b0->current_length - sizeof (esp_header_t) -
 		 IV_SIZE) / BLOCK_SIZE;
@@ -252,8 +262,6 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 	      if (PREDICT_FALSE (!sa0->is_tunnel && !sa0->is_tunnel_ip6))
 		{
 		  tunnel_mode = 0;
-		  ih4 =
-		    (ip4_header_t *) (b0->data + sizeof (ethernet_header_t));
 		  if (PREDICT_TRUE
 		      ((ih4->ip_version_and_header_length & 0xF0) != 0x40))
 		    {
@@ -262,11 +270,15 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 			   0x60))
 			{
 			  transport_ip6 = 1;
-			  ip_hdr_size = sizeof (ip6_header_t);
-			  ih6 =
-			    (ip6_header_t *) (b0->data +
-					      sizeof (ethernet_header_t));
-			  oh6 = vlib_buffer_get_current (b0);
+			  oh6 = (ip6_header_t *) ((uintptr_t)
+						  vlib_buffer_get_current (b0)
+						  + sizeof (esp_header_t) +
+						  IV_SIZE -
+						  sizeof (ip6_header_t));
+			  old_ip6_hdr =
+			    *((ip6_header_t *) ((uintptr_t)
+						vlib_buffer_get_current (b0) -
+						ip_hdr_size));
 			}
 		      else
 			{
@@ -284,7 +296,10 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 					  vlib_buffer_get_current (b0) +
 					  sizeof (esp_header_t) + IV_SIZE -
 					  sizeof (ip4_header_t));
-		      ip_hdr_size = sizeof (ip4_header_t);
+		      old_ip4_hdr =
+			*((ip4_header_t *) ((uintptr_t)
+					    vlib_buffer_get_current (b0) -
+					    ip_hdr_size));
 		    }
 		}
 
@@ -311,37 +326,19 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 		  goto trace;
 		}
 
-	      old_ip_hdr =
-		*((ip4_header_t *) ((uintptr_t) vlib_buffer_get_current (b0) -
-				    sizeof (ip4_header_t)));
-
 	      b0->current_data =
 		sizeof (esp_header_t) + IV_SIZE + sizeof (ethernet_header_t);
 	      b0->current_length = (blocks * BLOCK_SIZE) - 2;
 	      if (tunnel_mode)
-		b0->current_data += sizeof (ip4_header_t);
+		b0->current_data += ip_hdr_size;
 	      else
-		b0->current_length += sizeof (ip4_header_t);
+		b0->current_length += ip_hdr_size;
 
 	      b0->flags = VLIB_BUFFER_TOTAL_LENGTH_VALID;
 	      f0 =
-		(esp_footer_t *) ((u8 *) vlib_buffer_get_current (b0) +
-				  b0->current_length);
+		((esp_footer_t *) ((u8 *) vlib_buffer_get_current (b0) +
+				   b0->current_length));
 	      b0->current_length -= f0->pad_length;
-
-	      if (tunnel_mode)
-		{
-		  odp_packet_pull_head (crypto_op_params.pkt,
-					sizeof (esp_header_t) + IV_SIZE +
-					ip_hdr_size);
-		}
-	      else
-		{
-		  odp_packet_pull_head (crypto_op_params.pkt,
-					sizeof (esp_header_t) + IV_SIZE);
-		}
-	      odp_packet_pull_tail (crypto_op_params.pkt,
-				    f0->pad_length + icv_size);
 
 	      /* tunnel mode */
 	      if (PREDICT_TRUE (tunnel_mode))
@@ -368,18 +365,20 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 		{
 		  if (PREDICT_FALSE (transport_ip6))
 		    {
-		      // TODO not supported
-		      assert (0);
 
 		      next0 = ESP_DECRYPT_NEXT_IP6_INPUT;
 		      oh6->ip_version_traffic_class_and_flow_label =
-			ih6->ip_version_traffic_class_and_flow_label;
+			old_ip6_hdr.ip_version_traffic_class_and_flow_label;
 		      oh6->protocol = f0->next_header;
-		      oh6->hop_limit = ih6->hop_limit;
-		      oh6->src_address.as_u64[0] = ih6->src_address.as_u64[0];
-		      oh6->src_address.as_u64[1] = ih6->src_address.as_u64[1];
-		      oh6->dst_address.as_u64[0] = ih6->dst_address.as_u64[0];
-		      oh6->dst_address.as_u64[1] = ih6->dst_address.as_u64[1];
+		      oh6->hop_limit = old_ip6_hdr.hop_limit;
+		      oh6->src_address.as_u64[0] =
+			old_ip6_hdr.src_address.as_u64[0];
+		      oh6->src_address.as_u64[1] =
+			old_ip6_hdr.src_address.as_u64[1];
+		      oh6->dst_address.as_u64[0] =
+			old_ip6_hdr.dst_address.as_u64[0];
+		      oh6->dst_address.as_u64[1] =
+			old_ip6_hdr.dst_address.as_u64[1];
 		      oh6->payload_length =
 			clib_host_to_net_u16 (vlib_buffer_length_in_chain
 					      (vm,
@@ -389,13 +388,15 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 		    {
 		      next0 = ESP_DECRYPT_NEXT_IP4_INPUT;
 		      oh4->ip_version_and_header_length = 0x45;
-		      oh4->tos = old_ip_hdr.tos;
+		      oh4->tos = old_ip4_hdr.tos;
 		      oh4->fragment_id = 0;
 		      oh4->flags_and_fragment_offset = 0;
-		      oh4->ttl = old_ip_hdr.ttl;
+		      oh4->ttl = old_ip4_hdr.ttl;
 		      oh4->protocol = f0->next_header;
-		      oh4->src_address.as_u32 = old_ip_hdr.src_address.as_u32;
-		      oh4->dst_address.as_u32 = old_ip_hdr.dst_address.as_u32;
+		      oh4->src_address.as_u32 =
+			old_ip4_hdr.src_address.as_u32;
+		      oh4->dst_address.as_u32 =
+			old_ip4_hdr.dst_address.as_u32;
 		      oh4->length =
 			clib_host_to_net_u16 (vlib_buffer_length_in_chain
 					      (vm, b0));

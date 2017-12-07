@@ -137,13 +137,14 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 
       while (n_left_from > 0 && n_left_to_next > 0)
 	{
-	  u32 bi0, next0;
+	  u32 bi0, next0, ip_version_traffic_class_and_flow_label;
 	  vlib_buffer_t *b0 = 0;
 	  u32 sa_index0;
 	  ipsec_sa_t *sa0;
 	  ip4_and_esp_header_t *ih0, *oh0 = 0;
 	  ip6_and_esp_header_t *ih6_0, *oh6_0 = 0;
 	  ip4_header_t old_ip4_hdr;
+	  ip6_header_t old_ip6_hdr;
 	  ethernet_header_t old_eth_hdr;
 	  esp_footer_t *f0;
 	  u8 is_ipv6;
@@ -184,7 +185,6 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	  old_eth_hdr = *((ethernet_header_t *)
 			  ((u8 *) vlib_buffer_get_current (b0) -
 			   sizeof (ethernet_header_t)));
-	  old_ip4_hdr = *((ip4_header_t *) vlib_buffer_get_current (b0));
 
 	  sa_sess_data = pool_elt_at_index (cwm->sa_sess_d[1], sa_index0);
 	  if (PREDICT_FALSE (!(sa_sess_data->sess)))
@@ -203,10 +203,19 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	      ((ih0->ip4.ip_version_and_header_length & 0xF0) == 0x60))
 	    {
 	      ip_hdr_size = sizeof (ip6_header_t);
+	      is_ipv6 = 1;
+	      old_ip6_hdr = *((ip6_header_t *) vlib_buffer_get_current (b0));
+	      ih6_0 = vlib_buffer_get_current (b0);
+	      ip_version_traffic_class_and_flow_label =
+		ih6_0->ip6.ip_version_traffic_class_and_flow_label;
+	      ip_proto = ih6_0->ip6.protocol;
 	    }
 	  else
 	    {
 	      ip_hdr_size = sizeof (ip4_header_t);
+	      is_ipv6 = 0;
+	      old_ip4_hdr = *((ip4_header_t *) vlib_buffer_get_current (b0));
+	      ip_proto = old_ip4_hdr.protocol;
 	    }
 
 	  odp_packet_t pkt = odp_packet_from_vlib_buffer (b0);
@@ -224,40 +233,30 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	  to_next += 1;
 
 	  /* is ipv6 */
-	  if (PREDICT_FALSE
-	      ((ih0->ip4.ip_version_and_header_length & 0xF0) == 0x60))
+	  if (PREDICT_FALSE (is_ipv6))
 	    {
-	      // TODO not supported
-	      assert (0);
-
-	      is_ipv6 = 1;
-	      ih6_0 = vlib_buffer_get_current (b0);
-	      ip_hdr_size = sizeof (ip6_header_t);
 	      next_hdr_type = IP_PROTOCOL_IPV6;
 	      oh6_0 = vlib_buffer_get_current (b0);
 
 	      oh6_0->ip6.ip_version_traffic_class_and_flow_label =
-		ih6_0->ip6.ip_version_traffic_class_and_flow_label;
+		ip_version_traffic_class_and_flow_label;
 	      oh6_0->ip6.protocol = IP_PROTOCOL_IPSEC_ESP;
 	      oh6_0->ip6.hop_limit = 254;
 	      oh6_0->ip6.src_address.as_u64[0] =
-		ih6_0->ip6.src_address.as_u64[0];
+		old_ip6_hdr.src_address.as_u64[0];
 	      oh6_0->ip6.src_address.as_u64[1] =
-		ih6_0->ip6.src_address.as_u64[1];
+		old_ip6_hdr.src_address.as_u64[1];
 	      oh6_0->ip6.dst_address.as_u64[0] =
-		ih6_0->ip6.dst_address.as_u64[0];
+		old_ip6_hdr.dst_address.as_u64[0];
 	      oh6_0->ip6.dst_address.as_u64[1] =
-		ih6_0->ip6.dst_address.as_u64[1];
+		old_ip6_hdr.dst_address.as_u64[1];
 	      oh6_0->esp.spi = clib_net_to_host_u32 (sa0->spi);
 	      oh6_0->esp.seq = clib_net_to_host_u32 (sa0->seq);
-	      ip_proto = ih6_0->ip6.protocol;
 
 	      next0 = ESP_ENCRYPT_NEXT_IP6_LOOKUP;
 	    }
 	  else
 	    {
-	      is_ipv6 = 0;
-	      ip_hdr_size = sizeof (ip4_header_t);
 	      next_hdr_type = IP_PROTOCOL_IP_IN_IP;
 	      oh0 = vlib_buffer_get_current (b0);
 
@@ -271,7 +270,6 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	      oh0->ip4.dst_address.as_u32 = old_ip4_hdr.dst_address.as_u32;
 	      oh0->esp.spi = clib_net_to_host_u32 (sa0->spi);
 	      oh0->esp.seq = clib_net_to_host_u32 (sa0->seq);
-	      ip_proto = old_ip4_hdr.protocol;
 
 	      next0 = ESP_ENCRYPT_NEXT_IP4_LOOKUP;
 	    }
@@ -286,9 +284,6 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	    }
 	  else if (is_ipv6 && sa0->is_tunnel && sa0->is_tunnel_ip6)
 	    {
-	      // TODO not supported
-	      assert (0);
-
 	      oh6_0->ip6.src_address.as_u64[0] =
 		sa0->tunnel_src_addr.ip6.as_u64[0];
 	      oh6_0->ip6.src_address.as_u64[1] =
