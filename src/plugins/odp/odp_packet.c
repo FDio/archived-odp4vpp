@@ -43,21 +43,9 @@ create_pktio (const char *dev, odp_pool_t pool, odp_packet_if_t * oif)
   odp_pktio_capability_t capa;
 
   odp_pktio_param_init (&pktio_param);
-
-  switch (oif->m.rx_mode)
-    {
-    case APPL_MODE_PKT_BURST:
-      pktio_param.in_mode = ODP_PKTIN_MODE_DIRECT;
-      break;
-    case APPL_MODE_PKT_QUEUE:
-      pktio_param.in_mode = ODP_PKTIN_MODE_QUEUE;
-      break;
-    case APPL_MODE_PKT_SCHED:
-      pktio_param.in_mode = ODP_PKTIN_MODE_SCHED;
-      break;
-    default:
-      clib_warning ("Invalid RX mode\n");
-    }
+  odp_pktio_config_init (&pktio_config);
+  odp_pktin_queue_param_init (&pktin_param);
+  odp_pktout_queue_param_init (&pktout_param);
 
   switch (oif->m.tx_mode)
     {
@@ -75,6 +63,36 @@ create_pktio (const char *dev, odp_pool_t pool, odp_packet_if_t * oif)
       clib_warning ("Invalid TX mode\n");
     }
 
+  switch (oif->m.rx_mode)
+    {
+    case APPL_MODE_PKT_BURST:
+      pktio_param.in_mode = ODP_PKTIN_MODE_DIRECT;
+      break;
+    case APPL_MODE_PKT_QUEUE:
+      pktio_param.in_mode = ODP_PKTIN_MODE_QUEUE;
+      break;
+    case APPL_MODE_PKT_SCHED_ATOMIC:
+      pktio_param.in_mode = ODP_PKTIN_MODE_SCHED;
+      pktin_param.queue_param.sched.sync = ODP_SCHED_SYNC_ATOMIC;
+      pktin_param.queue_param.sched.group = oif->sched_group;
+      break;
+    case APPL_MODE_PKT_SCHED_ORDERED:
+      pktio_param.in_mode = ODP_PKTIN_MODE_SCHED;
+      pktin_param.queue_param.sched.sync = ODP_SCHED_SYNC_ORDERED;
+      pktin_param.queue_param.sched.group = oif->sched_group;
+      /* Force Tx Queue mode */
+      oif->m.tx_mode = APPL_MODE_PKT_QUEUE;
+      pktio_param.out_mode = ODP_PKTOUT_MODE_QUEUE;
+      break;
+    case APPL_MODE_PKT_SCHED_PARALLEL:
+      pktio_param.in_mode = ODP_PKTIN_MODE_SCHED;
+      pktin_param.queue_param.sched.sync = ODP_SCHED_SYNC_PARALLEL;
+      pktin_param.queue_param.sched.group = oif->sched_group;
+      break;
+    default:
+      clib_warning ("Invalid RX mode\n");
+    }
+
   /* Open a packet IO instance */
   pktio = odp_pktio_open (dev, pool, &pktio_param);
 
@@ -90,12 +108,9 @@ create_pktio (const char *dev, odp_pool_t pool, odp_packet_if_t * oif)
       return 0;
     }
 
-  odp_pktio_config_init (&pktio_config);
+  /* Disable ODP parser for performance */
   pktio_config.parser.layer = ODP_PKTIO_PARSER_LAYER_NONE;
   odp_pktio_config (pktio, &pktio_config);
-
-  odp_pktin_queue_param_init (&pktin_param);
-  pktin_param.op_mode = ODP_PKTIO_OP_MT_UNSAFE;
 
   if (oif->m.num_rx_queues > capa.max_input_queues)
     {
@@ -109,9 +124,9 @@ create_pktio (const char *dev, odp_pool_t pool, odp_packet_if_t * oif)
       if (oif->m.num_rx_queues > MAX_QUEUES)
 	oif->m.num_rx_queues = MAX_QUEUES;
 
+      pktin_param.num_queues = oif->m.num_rx_queues;
       pktin_param.classifier_enable = 0;
       pktin_param.hash_enable = 1;
-      pktin_param.num_queues = oif->m.num_rx_queues;
       pktin_param.hash_proto.proto.ipv4_udp = 1;
       pktin_param.hash_proto.proto.ipv4_tcp = 1;
       pktin_param.hash_proto.proto.ipv4 = 1;
@@ -119,15 +134,12 @@ create_pktio (const char *dev, odp_pool_t pool, odp_packet_if_t * oif)
   else
     oif->m.num_rx_queues = 1;
 
-  if (oif->m.rx_mode == APPL_MODE_PKT_SCHED)
-    pktin_param.queue_param.sched.sync = ODP_SCHED_SYNC_ATOMIC;
-
+  pktin_param.op_mode = ODP_PKTIO_OP_MT_UNSAFE;
   if (odp_pktin_queue_config (pktio, &pktin_param))
     {
       clib_warning ("Error: pktin config failed");
     }
 
-  odp_pktout_queue_param_init (&pktout_param);
   if ((capa.max_output_queues >= tm->n_vlib_mains) &&
       (oif->m.num_tx_queues == 0))
     {
@@ -166,7 +178,7 @@ odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
   vnet_sw_interface_t *sw;
   vnet_main_t *vnm = vnet_get_main ();
   uword *p;
-  vlib_thread_main_t *tm = vlib_get_thread_main ();
+  odp_thrmask_t thrmask;
 
   p = mhash_get (&om->if_index_by_host_if_name, host_if_name);
   if (p)
@@ -178,8 +190,13 @@ odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
   oif->per_interface_next_index = ~0;
   oif->m = *mode;
 
-  if (mode->rx_mode == APPL_MODE_PKT_SCHED)
-    oif->m.num_rx_queues = tm->n_vlib_mains - 1;
+  /* Create new schedule group */
+  if ((oif->m.rx_mode != APPL_MODE_PKT_BURST) &&
+      (oif->m.rx_mode != APPL_MODE_PKT_QUEUE))
+    {
+      odp_thrmask_zero (&thrmask);
+      oif->sched_group = odp_schedule_group_create (NULL, &thrmask);
+    }
 
   /* Create a pktio instance */
   oif->pktio = create_pktio ((char *) host_if_name, om->pool, oif);
@@ -191,13 +208,13 @@ odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
 
   om->if_count++;
 
-  if (mode->rx_mode == APPL_MODE_PKT_BURST)
+  if (oif->m.rx_mode == APPL_MODE_PKT_BURST)
     odp_pktin_queue (oif->pktio, oif->inq, oif->m.num_rx_queues);
-  else if (mode->rx_mode == APPL_MODE_PKT_QUEUE)
+  else if (oif->m.rx_mode == APPL_MODE_PKT_QUEUE)
     odp_pktin_event_queue (oif->pktio, oif->rxq, oif->m.num_rx_queues);
-  if (mode->tx_mode == APPL_MODE_PKT_BURST)
+  if (oif->m.tx_mode == APPL_MODE_PKT_BURST)
     odp_pktout_queue (oif->pktio, oif->outq, oif->m.num_tx_queues);
-  else if (mode->tx_mode == APPL_MODE_PKT_QUEUE)
+  else if (oif->m.tx_mode == APPL_MODE_PKT_QUEUE)
     odp_pktout_event_queue (oif->pktio, oif->txq, oif->m.num_tx_queues);
 
   /* Use configured MAC or read MAC from DPDK */
@@ -243,12 +260,7 @@ odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name, u8 * hw_addr_set,
 
   /* Assign queues of the new interface to first available worker thread */
   for (j = 0; j < oif->m.num_rx_queues; j++)
-    {
-      if (mode->rx_mode == APPL_MODE_PKT_SCHED)
-	vnet_hw_interface_assign_rx_thread (vnm, oif->hw_if_index, 0, j + 1);
-      else
-	vnet_hw_interface_assign_rx_thread (vnm, oif->hw_if_index, j, -1);
-    }
+    vnet_hw_interface_assign_rx_thread (vnm, oif->hw_if_index, j, -1);
 
   return 0;
 
@@ -327,8 +339,12 @@ odp_device_config (char *name, unformat_input_t * input)
 		mode.rx_mode = APPL_MODE_PKT_BURST;
 	      else if (!strcmp (val, "queue") || !strcmp (val, "1"))
 		mode.rx_mode = APPL_MODE_PKT_QUEUE;
+	      else if (!strcmp (val, "sched-p") || !strcmp (val, "4"))
+		mode.rx_mode = APPL_MODE_PKT_SCHED_PARALLEL;
+	      else if (!strcmp (val, "sched-o") || !strcmp (val, "3"))
+		mode.rx_mode = APPL_MODE_PKT_SCHED_ORDERED;
 	      else if (!strcmp (val, "sched") || !strcmp (val, "2"))
-		mode.rx_mode = APPL_MODE_PKT_SCHED;
+		mode.rx_mode = APPL_MODE_PKT_SCHED_ATOMIC;
 	      vec_free (val);
 	    }
 	  else if (unformat (input, "tx-mode %s", &val))

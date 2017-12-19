@@ -11,10 +11,13 @@
 #define SHM_PKT_POOL_BUF_SIZE  1856
 #define SHM_PKT_POOL_NB_PKTS   10240
 #define SHM_PKT_POOL_NAME      "packet_pool"
+
 #define APPL_MODE_PKT_BURST    0
 #define APPL_MODE_PKT_QUEUE    1
-#define APPL_MODE_PKT_SCHED    2
-#define APPL_MODE_PKT_TM       3
+#define APPL_MODE_PKT_SCHED_ATOMIC    2
+#define APPL_MODE_PKT_SCHED_ORDERED   3
+#define APPL_MODE_PKT_SCHED_PARALLEL  4
+#define APPL_MODE_PKT_TM       2
 
 #define MAX_WORKERS 32
 #define MAX_QUEUES (MAX_WORKERS + 1)
@@ -52,6 +55,7 @@ typedef struct
   odp_pktout_queue_t outq[MAX_QUEUES];
   odp_queue_t txq[MAX_QUEUES];
   odp_if_mode_t m;
+  odp_schedule_group_t sched_group;
 } odp_packet_if_t;
 
 typedef struct

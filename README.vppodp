@@ -74,8 +74,9 @@ Below is a basic verification test.
 Note :For odp-dpdk the port has to bound with dpdk driver prior to test and interface name is passed as 0,1..etc.
 
 1)Configure odp packet interface with Rx/Tx mode and number of queues.
-  Rx mode can be set to 0-burst, 1-queue, 2-schedule (default mode is burst).
-  Tx mode can be set to 0-burst, 1-queue (default mode is burst)
+  Rx mode can be set to 0-burst (default), 1-queue, 2-schedule-atomic,
+      3-schedule-ordered, 4-schedule-parallel
+  Tx mode can be set to 0-burst (default), 1-queue (forced for schedule-ordered)
   Number of Rx queues can be 1 or more. It will determine number of threads and enable RSS (default is 1).
   Number of Tx queues can be 0 (equal to number of threads, default) or 1 (single shared queue).
 
