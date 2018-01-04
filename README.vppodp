@@ -11,35 +11,11 @@ odp4vpp project aims to provide VPP with an additional vnet device based on Open
 
 #Build Procedure:
 ----------------
-The source code add support to build VPP with either odp-linux or odp-dpdk.
+The source code add support to build VPP with odp-dpdk implementation.
+Generic odp-linux is not supported as it keeps user area outside packet buffer.
+VPP requires the user area (used to store vlib_buffer_t) to be located just before packet data.
 
-1)Build vpp with odp-linux:
----------------------------
-Build the odp linux package by compiling odp from odp git repository:
-
-git clone https://git.linaro.org/lng/odp.git
-
-Follow the README steps for complete build.
-
-cd odp
-./bootstrap
-./configure --prefix= <odp-install-path>
-make install
-
-Set the environment variables with ODP config:
-
-export PLATFORM=odp
-export ODP_INST_PATH=<odp-install-path>
-
-Build vpp:
-Follow the README steps for complete build.
-
-cd vpp
-make install-dep
-make build
-make run
-
-2)Build vpp with odp-dpdk:
+Build vpp with odp-dpdk:
 --------------------------
 Build the odp-dpdk package by compiling odp-dpdk from odp-dpdk git repository:
 
