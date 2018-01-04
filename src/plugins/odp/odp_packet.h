@@ -4,11 +4,11 @@
  * SPDX-License-Identifier:     BSD-3-Clause
  */
 
+#include <vlib/buffer.h>
 #include <odp_api.h>
 #include <odp/helper/odph_api.h>
 
-#define SHM_PKT_BUF_SIZE       1598
-#define SHM_PKT_POOL_BUF_SIZE  1856
+#define SHM_PKT_POOL_BUF_SIZE  (VLIB_BUFFER_DATA_SIZE)
 #define SHM_PKT_POOL_NB_PKTS   10240
 #define SHM_PKT_POOL_NAME      "packet_pool"
 
