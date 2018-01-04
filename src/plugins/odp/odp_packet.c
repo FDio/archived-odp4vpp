@@ -15,7 +15,6 @@
 #include <odp/odp_packet.h>
 
 odp_packet_main_t *odp_packet_main;
-odp_platform_init_t platform_params;
 u32 rx_sched_wait;
 u32 tx_burst_size;
 u32 num_pkts_in_pool = SHM_PKT_POOL_NB_PKTS;
@@ -398,37 +397,11 @@ static clib_error_t *
 odp_config (vlib_main_t * vm, unformat_input_t * input)
 {
   char *param = NULL;
-  u32 num;
   unformat_input_t sub_input;
-  unformat_input_t line_input;
 
   while (unformat_check_input (input) != UNFORMAT_END_OF_INPUT)
     {
-      if (unformat (input, "platform-params %U",
-		    unformat_vlib_cli_sub_input, &sub_input))
-	{
-	  unformat_skip_white_space (&sub_input);
-	  while (unformat_check_input (&sub_input) != UNFORMAT_END_OF_INPUT)
-	    {
-	      if (unformat (&sub_input, "memory %u", &num))
-		platform_params.memory = num;
-	      else if (unformat (&sub_input, "cmdline %U",
-				 unformat_vlib_cli_sub_input, &line_input))
-		{
-		  unformat (&line_input, "%U", unformat_line, &param);
-		  platform_params.cmdline = param;
-		  unformat_free (&line_input);
-		}
-	      else if (unformat (&sub_input, "%s", &param))
-		{
-		  clib_warning ("%s: Unknown platform option %s\n", __func__,
-				param);
-		  vec_free (param);
-		}
-	    }
-	  unformat_free (&sub_input);
-	}
-      else if (unformat (input, "rx-sched-wait %u", &rx_sched_wait))
+      if (unformat (input, "rx-sched-wait %u", &rx_sched_wait))
 	;
       else if (unformat (input, "tx-burst-size %u", &tx_burst_size))
 	;
@@ -518,13 +491,7 @@ odp_packet_init (vlib_main_t * vm)
   odp_shm_t shm;
   odp_instance_t instance;
 
-  if (platform_params.memory == 0)
-    {
-      platform_params.memory = 50 + num_pkts_in_pool * 4 / 1024;
-      clib_warning ("Warning: Platform 'memory' parameter not configured!");
-    }
-
-  if (odp_init_global (&instance, NULL, &platform_params))
+  if (odp_init_global (&instance, NULL, NULL))
     clib_warning ("Error: ODP global init failed");
 
   if (odp_init_local (instance, ODP_THREAD_CONTROL) != 0)
