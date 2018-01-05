@@ -20,11 +20,14 @@
 
 typedef struct
 {
+  u8 is_odp_sa_present;
+  odp_ipsec_sa_t odp_sa;
   odp_crypto_session_t sess;
   u32 digest_size;
   u8 iv_data[16];
   u32 iv_len;
   u32 key_size;
+  ip46_address_t tunnel_dst, tunnel_src;
 } sa_data_t;
 
 typedef struct
@@ -43,8 +46,10 @@ extern odp_crypto_main_t odp_crypto_main;
 extern u8 enable_odp_crypto;
 
 int create_sess (ipsec_sa_t * sa, sa_data_t * sess, int is_outbound);
+int create_odp_sa (ipsec_sa_t * sa, sa_data_t * sess, int flow_label,
+		   int is_outbound);
 
-clib_error_t *ipsec_init (vlib_main_t * vm);
+clib_error_t *ipsec_init (vlib_main_t * vm, u8 ipsec_api);
 
 #endif /* __IPSEC_H__ */
 

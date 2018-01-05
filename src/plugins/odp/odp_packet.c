@@ -24,6 +24,7 @@ odp_if_mode_t def_if_mode;
 odp_if_config_t *if_config;
 odp_crypto_main_t odp_crypto_main;
 u8 enable_odp_crypto;
+u8 ipsec_api;
 
 static u32
 odp_packet_eth_flag_change (vnet_main_t * vnm, vnet_hw_interface_t * hi,
@@ -430,6 +431,10 @@ odp_config (vlib_main_t * vm, unformat_input_t * input)
 	{
 	  enable_odp_crypto = 1;
 	}
+      else if (unformat (input, "enable-odp-ipsec"))
+	{
+	  ipsec_api = 1;
+	}
       else if (unformat (input, "%s", &param))
 	{
 	  clib_warning ("%s: Unknown option %s\n", __func__, param);
@@ -472,7 +477,7 @@ odp_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
   /* Initialization complete and worker threads can start */
   tm->worker_thread_release = 1;
 
-  ipsec_init (vlib_get_main ());
+  ipsec_init (vlib_get_main (), ipsec_api);
 
   return 0;
 }
