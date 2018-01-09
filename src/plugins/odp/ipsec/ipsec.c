@@ -64,6 +64,20 @@ add_del_sa_sess (u32 sa_index, u8 is_add)
   return 0;
 }
 
+int vpp_to_odp_auth_alg(int vpp_auth_alg) {
+  switch (vpp_auth_alg)
+    {
+    case IPSEC_INTEG_ALG_SHA_512_256:
+      return ODP_AUTH_ALG_SHA512_HMAC;
+    case IPSEC_INTEG_ALG_SHA_256_128:
+      return ODP_AUTH_ALG_SHA256_HMAC;
+    case IPSEC_INTEG_ALG_SHA1_96:
+      return ODP_AUTH_ALG_SHA1_HMAC;
+    default:
+      return ODP_AUTH_ALG_NULL;
+    }
+}
+
 int
 create_sess (ipsec_sa_t * sa, sa_data_t * sa_sess_data, int is_outbound)
 {
@@ -100,21 +114,7 @@ create_sess (ipsec_sa_t * sa, sa_data_t * sa_sess_data, int is_outbound)
       crypto_params.cipher_alg = ODP_CIPHER_ALG_NULL;
     }
 
-  switch (sa->integ_alg)
-    {
-    case IPSEC_INTEG_ALG_SHA_512_256:
-      crypto_params.auth_alg = ODP_AUTH_ALG_SHA512_HMAC;
-      break;
-    case IPSEC_INTEG_ALG_SHA_256_128:
-      crypto_params.auth_alg = ODP_AUTH_ALG_SHA256_HMAC;
-      break;
-    case IPSEC_INTEG_ALG_SHA1_96:
-      crypto_params.auth_alg = ODP_AUTH_ALG_SHA1_HMAC;
-      break;
-    default:
-      crypto_params.auth_alg = ODP_AUTH_ALG_NULL;
-      break;
-    }
+  crypto_params.auth_alg = vpp_to_odp_auth_alg(sa->integ_alg);
 
   actual_capa_amount = odp_crypto_auth_capability (crypto_params.auth_alg,
 						     capa,
@@ -136,7 +136,8 @@ create_sess (ipsec_sa_t * sa, sa_data_t * sa_sess_data, int is_outbound)
     {
       if (actual_capa_amount)
 	clib_warning
-	  ("Failed to get matching capabilities, algorithm appears to be supported but key or digest length incompatible\n");
+	  ("Failed to get matching capabilities, algorithm appears to be supported "\
+		"but key or digest length incompatible\n");
       else
 	clib_warning
 	  ("Failed to get matching capabilities, algorithm probably not supported\n");
