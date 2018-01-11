@@ -76,6 +76,27 @@ format_odp_packet_tx_trace (u8 * s, va_list * args)
 	    n_left--;					\
 	    }
 
+static_always_inline int
+odp_buffer_recycle (vlib_main_t * vm, odp_packet_main_t * om,
+		    odp_packet_t * pkt, vlib_buffer_t * b, u32 bi,
+		    u32 ** recycle)
+{
+  if (PREDICT_TRUE ((b->flags & VLIB_BUFFER_RECYCLE) == 0))
+    return 1;
+
+  odp_packet_t new = odp_packet_copy (*pkt, om->pool);
+  vec_add1 (*recycle, bi);
+
+  if (PREDICT_FALSE (new == ODP_PACKET_INVALID))
+    {
+      b->flags |= VLIB_BUFFER_REPL_FAIL;
+      return 0;
+    }
+
+  *pkt = new;
+  return 1;
+}
+
 static uword
 odp_packet_interface_tx (vlib_main_t * vm,
 			 vlib_node_runtime_t * node, vlib_frame_t * frame)
@@ -97,12 +118,13 @@ odp_packet_interface_tx (vlib_main_t * vm,
   vlib_buffer_t *b0, *b1, *b2, *b3;
   u32 bi[4];
   u32 sent, count = 0, todo = 0;
+  u32 *recycle = NULL;
 
   while (n_left > 0 || todo > 0)
     {
       int ret;
 
-      for (; todo < 4 && todo < n_left; todo++, n_left--)
+      for (; (todo < 4) && (n_left > 0); todo++, n_left--)
 	bi[todo] = *buffers++;
 
       while ((todo == 4) && (count + 3 < burst_size))
@@ -126,17 +148,25 @@ odp_packet_interface_tx (vlib_main_t * vm,
 
 	  if (mode == APPL_MODE_PKT_QUEUE)
 	    {
-	      tbl.evt[count++] = odp_packet_to_event (pkt0);
-	      tbl.evt[count++] = odp_packet_to_event (pkt1);
-	      tbl.evt[count++] = odp_packet_to_event (pkt2);
-	      tbl.evt[count++] = odp_packet_to_event (pkt3);
+	      if (odp_buffer_recycle (vm, om, &pkt0, b0, bi[0], &recycle))
+		tbl.evt[count++] = odp_packet_to_event (pkt0);
+	      if (odp_buffer_recycle (vm, om, &pkt1, b1, bi[1], &recycle))
+		tbl.evt[count++] = odp_packet_to_event (pkt1);
+	      if (odp_buffer_recycle (vm, om, &pkt2, b2, bi[2], &recycle))
+		tbl.evt[count++] = odp_packet_to_event (pkt2);
+	      if (odp_buffer_recycle (vm, om, &pkt3, b3, bi[3], &recycle))
+		tbl.evt[count++] = odp_packet_to_event (pkt3);
 	    }
 	  else
 	    {
-	      tbl.pkt[count++] = pkt0;
-	      tbl.pkt[count++] = pkt1;
-	      tbl.pkt[count++] = pkt2;
-	      tbl.pkt[count++] = pkt3;
+	      if (odp_buffer_recycle (vm, om, &pkt0, b0, bi[0], &recycle))
+		tbl.pkt[count++] = pkt0;
+	      if (odp_buffer_recycle (vm, om, &pkt1, b1, bi[1], &recycle))
+		tbl.pkt[count++] = pkt1;
+	      if (odp_buffer_recycle (vm, om, &pkt2, b2, bi[2], &recycle))
+		tbl.pkt[count++] = pkt2;
+	      if (odp_buffer_recycle (vm, om, &pkt3, b3, bi[3], &recycle))
+		tbl.pkt[count++] = pkt3;
 	    }
 
 	  todo = 0;
@@ -156,10 +186,13 @@ odp_packet_interface_tx (vlib_main_t * vm,
 
 	  odp_adjust_data_pointers (b0, pkt);
 
-	  if (mode == APPL_MODE_PKT_QUEUE)
-	    tbl.evt[count++] = odp_packet_to_event (pkt);
-	  else
-	    tbl.pkt[count++] = pkt;
+	  if (odp_buffer_recycle (vm, om, &pkt, b0, bi[todo - 1], &recycle))
+	    {
+	      if (mode == APPL_MODE_PKT_QUEUE)
+		tbl.evt[count++] = odp_packet_to_event (pkt);
+	      else
+		tbl.pkt[count++] = pkt;
+	    }
 
 	  if (b0->flags & VLIB_BUFFER_NEXT_PRESENT)
 	    bi[todo - 1] = b0->next_buffer;
@@ -204,6 +237,13 @@ odp_packet_interface_tx (vlib_main_t * vm,
 	      sent += ret;
 	    }
 	}
+    }
+
+  /* Recycle replicated buffers */
+  if (PREDICT_FALSE (recycle != NULL))
+    {
+      vlib_buffer_free (vm, recycle, vec_len (recycle));
+      vec_free (recycle);
     }
 
   return (frame->n_vectors - n_left);

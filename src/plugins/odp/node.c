@@ -179,6 +179,7 @@ odp_adjust_buffer (vlib_buffer_t * buf, odp_packet_t pkt,
   buf->current_data = 0;
   buf->total_length_not_including_first_buffer = 0;
   buf->flags = VLIB_BUFFER_TOTAL_LENGTH_VALID;
+  buf->free_list_index = VLIB_BUFFER_DEFAULT_FREE_LIST_INDEX;
   vnet_buffer (buf)->sw_if_index[VLIB_RX] = oif->sw_if_index;
   vnet_buffer (buf)->sw_if_index[VLIB_TX] = (u32) ~ 0;
 }
