@@ -543,9 +543,12 @@ odp_packet_init (vlib_main_t * vm)
 
   mhash_init_vec_string (&om->if_index_by_host_if_name, sizeof (uword));
 
-  vpm->virtual.start = params.pool_start;
-  vpm->virtual.end = params.pool_end;
-  vpm->virtual.size = params.pool_size;
+  /* Get address range of the pool */
+  odp_pool_info_t info;
+  odp_pool_info (om->pool, &info);
+  vpm->virtual.start = info.min_data_addr;
+  vpm->virtual.end = info.max_data_addr;
+  vpm->virtual.size = info.max_data_addr - info.min_data_addr + 1;
 
   return 0;
 }
