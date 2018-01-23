@@ -86,6 +86,16 @@ format_esp_encrypt_trace (u8 * s, va_list * args)
   return s;
 }
 
+/* packet trace format function */
+static u8 *
+format_esp_encrypt_post_trace (u8 * s, va_list * args)
+{
+  CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
+  CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
+
+  s = format (s, "POST ENCRYPT CRYPTO (ODP) esp");
+  return s;
+}
 
 static uword
 esp_encrypt_node_fn (vlib_main_t * vm,
@@ -118,7 +128,6 @@ esp_encrypt_node_fn (vlib_main_t * vm,
   while (n_left_from > 0)
     {
       u32 n_left_to_next;
-      u32 buffers_passed = 0;
 
       vlib_get_next_frame (vm, node, next_index, to_next, n_left_to_next);
 
@@ -129,8 +138,7 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	  u32 sa_index0;
 	  ipsec_sa_t *sa0;
 	  ip6_header_t *h6 = 0;
-	  ethernet_header_t old_eth_hdr;
-	  u8 transport_mode = 0;
+	  //u8 transport_mode = 0;
 	  sa_data_t *sa_sess_data;
 	  u32 flow_label;
 
@@ -147,16 +155,18 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 
 	  sa0->total_data_size += i_b0->current_length;
 
-	  old_eth_hdr = *((ethernet_header_t *)
-			  ((u8 *) vlib_buffer_get_current (i_b0) -
-			   sizeof (ethernet_header_t)));
-
 	  h6 = vlib_buffer_get_current (i_b0);
 
 	  flow_label =
 	    (0xFFFFF & h6->ip_version_traffic_class_and_flow_label);
 
 	  sa_sess_data = pool_elt_at_index (cwm->sa_sess_d[1], sa_index0);
+
+	  clib_memcpy (&vnet_buffer (i_b0)->post_crypto.dst_mac,
+		       ((u8 *) vlib_buffer_get_current (i_b0) -
+			sizeof (ethernet_header_t)),
+		       sizeof (ethernet_header_t));
+
 	  if (PREDICT_FALSE (!(sa_sess_data->is_odp_sa_present)))
 	    {
 	      int ret = create_odp_sa (sa0, sa_sess_data, flow_label, 1);
@@ -172,6 +182,18 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	  to_next[0] = bi0;
 	  to_next += 1;
 
+	  if (!sa0->is_tunnel)
+	    {
+	      next0 = ESP_ENCRYPT_NEXT_INTERFACE_OUTPUT;
+	    }
+	  else
+	    {
+	      if (sa0->is_tunnel_ip6)
+		next0 = ESP_ENCRYPT_NEXT_IP6_LOOKUP;
+	      else
+		next0 = ESP_ENCRYPT_NEXT_IP4_LOOKUP;
+	      vnet_buffer (i_b0)->sw_if_index[VLIB_TX] = (u32) ~ 0;
+	    }
 
 	  ASSERT (sa0->crypto_alg < IPSEC_CRYPTO_N_ALG);
 
@@ -190,13 +212,16 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 
 	      odp_packet_l3_offset_set (pkt, 0);
 
+	      vnet_buffer (i_b0)->post_crypto.next_index = (u8) next0;
+
 	      int processed = 1;
 
-	      int ret = odp_ipsec_out (&pkt, 1, &out_pkt, &processed, &oiopt);
+	      int ret;
 
-	      o_b0 = vlib_buffer_from_odp_packet (out_pkt);
-
-	      vnet_buffer (o_b0)->unused[0] = next0;
+              if (is_async)
+		ret = odp_ipsec_out_enq (&pkt, 1, &oiopt);
+	      else
+		ret = odp_ipsec_out (&pkt, 1, &out_pkt, &processed, &oiopt);
 
 	      if (ret < 1)
 		{
@@ -204,67 +229,61 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 		  goto trace;
 		}
 
-	      o_b0->current_data =
-		(i16) ((intptr_t) odp_packet_data (out_pkt) -
-		       (intptr_t) o_b0->data +
-		       (intptr_t) odp_packet_l3_offset (out_pkt));
-	      o_b0->current_length = odp_packet_len (out_pkt);
 
-
-	    }
-
-	  if (!sa0->is_tunnel)
-	    {
-	      if (vnet_buffer (o_b0)->sw_if_index[VLIB_TX] != ~0)
+	      if (!is_async)
 		{
-		  transport_mode = 1;
-		  ethernet_header_t *ieh0, *oeh0;
-		  ieh0 = &old_eth_hdr;
-		  oeh0 =
-		    (ethernet_header_t *) ((uintptr_t)
-					   vlib_buffer_get_current (o_b0) -
-					   sizeof (ethernet_header_t));
-		  clib_memcpy (oeh0, ieh0, sizeof (ethernet_header_t));
-		  next0 = ESP_ENCRYPT_NEXT_INTERFACE_OUTPUT;
+		  o_b0 = vlib_buffer_from_odp_packet (out_pkt);
+
+
+		  o_b0->current_data =
+		    (i16) ((intptr_t) odp_packet_data (out_pkt) -
+			   (intptr_t) o_b0->data +
+			   (intptr_t) odp_packet_l3_offset (out_pkt));
+		  o_b0->current_length = odp_packet_len (out_pkt);
 		}
+
 	    }
 
-	  if (transport_mode)
+	  if (!is_async)
 	    {
-	      o_b0->current_data -= sizeof (ethernet_header_t);
-	      o_b0->current_length += sizeof (ethernet_header_t);
+	      if (!sa0->is_tunnel)
+		{
+		  if (vnet_buffer (o_b0)->sw_if_index[VLIB_TX] != ~0)
+		    {
+		      ethernet_header_t *ieh0, *oeh0;
+		      ieh0 =
+			(ethernet_header_t *) & vnet_buffer (i_b0)->post_crypto.dst_mac;
+		      oeh0 =
+			(ethernet_header_t *) ((uintptr_t)
+					       vlib_buffer_get_current (o_b0)
+					       - sizeof (ethernet_header_t));
+		      clib_memcpy (oeh0, ieh0, sizeof (ethernet_header_t));
+		    }
+		  o_b0->current_data -= sizeof (ethernet_header_t);
+		  o_b0->current_length += sizeof (ethernet_header_t);
+		}
+
+	      vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
+					       to_next, n_left_to_next, bi0,
+					       next0);
 	    }
 	  else
 	    {
-	      if (sa0->is_tunnel_ip6)
-		next0 = ESP_ENCRYPT_NEXT_IP6_LOOKUP;
-	      else
-		next0 = ESP_ENCRYPT_NEXT_IP4_LOOKUP;
-
-	      vnet_buffer (o_b0)->sw_if_index[VLIB_TX] = (u32) ~ 0;
+	      to_next -= 1;
+	      n_left_to_next += 1;
 	    }
-
 	trace:
-	  if (PREDICT_FALSE (o_b0->flags & VLIB_BUFFER_IS_TRACED))
+	  if (PREDICT_FALSE (i_b0->flags & VLIB_BUFFER_IS_TRACED))
 	    {
-	      o_b0->flags |= VLIB_BUFFER_IS_TRACED;
-	      o_b0->trace_index = o_b0->trace_index;
 	      esp_encrypt_trace_t *tr =
-		vlib_add_trace (vm, node, o_b0, sizeof (*tr));
+		vlib_add_trace (vm, node, i_b0, sizeof (*tr));
 	      tr->spi = sa0->spi;
 	      tr->seq = sa0->seq - 1;
 	      tr->crypto_alg = sa0->crypto_alg;
 	      tr->integ_alg = sa0->integ_alg;
 	    }
-
-	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
-					   to_next, n_left_to_next, bi0,
-					   next0);
-	  buffers_passed += 1;
-
 	}
-      if (buffers_passed > 0)
-	vlib_put_next_frame (vm, node, next_index, n_left_to_next);
+      vlib_put_next_frame (vm, node, next_index, n_left_to_next);
     }
   vlib_node_increment_counter (vm, odp_ipsec_esp_encrypt_node.index,
 			       ESP_ENCRYPT_ERROR_RX_PKTS,
@@ -281,6 +300,91 @@ VLIB_REGISTER_NODE (odp_ipsec_esp_encrypt_node) = {
   .name = "odp-ipsec-esp-encrypt",
   .vector_size = sizeof (u32),
   .format_trace = format_esp_encrypt_trace,
+  .type = VLIB_NODE_TYPE_INTERNAL,
+
+  .n_errors = ARRAY_LEN(esp_encrypt_error_strings),
+  .error_strings = esp_encrypt_error_strings,
+
+  .n_next_nodes = ESP_ENCRYPT_N_NEXT,
+  .next_nodes = {
+#define _(s,n) [ESP_ENCRYPT_NEXT_##s] = n,
+    foreach_esp_encrypt_next
+#undef _
+  },
+};
+
+VLIB_NODE_FUNCTION_MULTIARCH (odp_ipsec_esp_encrypt_node, esp_encrypt_node_fn)
+
+     static uword
+       esp_encrypt_post_node_fn (vlib_main_t * vm,
+				 vlib_node_runtime_t * node,
+				 vlib_frame_t * from_frame)
+{
+  u32 n_left_from, *from, *to_next = 0, next_index;
+  from = vlib_frame_vector_args (from_frame);
+  n_left_from = from_frame->n_vectors;
+
+  next_index = node->cached_next_index;
+
+  while (n_left_from > 0)
+    {
+      u32 n_left_to_next;
+
+      vlib_get_next_frame (vm, node, next_index, to_next, n_left_to_next);
+
+      while (n_left_from > 0 && n_left_to_next > 0)
+	{
+	  u32 bi0, next0;
+	  vlib_buffer_t *b0 = 0;
+
+	  bi0 = from[0];
+	  from += 1;
+	  n_left_from -= 1;
+	  n_left_to_next -= 1;
+
+	  b0 = vlib_get_buffer (vm, bi0);
+
+	  to_next[0] = bi0;
+	  to_next += 1;
+
+	  next0 = vnet_buffer (b0)->post_crypto.next_index;
+
+	  if (next0 == ESP_ENCRYPT_NEXT_INTERFACE_OUTPUT)
+	    {
+
+	      ethernet_header_t *ieh0, *oeh0;
+	      ieh0 = (ethernet_header_t *) & vnet_buffer (b0)->post_crypto.dst_mac;
+	      oeh0 =
+		(ethernet_header_t *) ((uintptr_t)
+				       vlib_buffer_get_current (b0) -
+				       sizeof (ethernet_header_t));
+	      clib_memcpy (oeh0, ieh0, sizeof (ethernet_header_t));
+	      b0->current_data -= sizeof (ethernet_header_t);
+	      b0->current_length += sizeof (ethernet_header_t);
+	    }
+
+
+	  if (PREDICT_FALSE (b0->flags & VLIB_BUFFER_IS_TRACED))
+	    vlib_add_trace (vm, node, b0, 0);
+	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
+					   to_next, n_left_to_next, bi0,
+					   next0);
+	}
+      vlib_put_next_frame (vm, node, next_index, n_left_to_next);
+    }
+  vlib_node_increment_counter (vm, odp_ipsec_esp_encrypt_post_node.index,
+			       ESP_ENCRYPT_ERROR_RX_PKTS,
+			       from_frame->n_vectors);
+
+  return from_frame->n_vectors;
+}
+
+/* *INDENT-OFF* */
+VLIB_REGISTER_NODE (odp_ipsec_esp_encrypt_post_node) = {
+  .function = esp_encrypt_post_node_fn,
+  .name = "odp-ipsec-esp-encrypt-post",
+  .vector_size = sizeof (u32),
+  .format_trace = format_esp_encrypt_post_trace,
   .type = VLIB_NODE_TYPE_INTERNAL,
 
   .n_errors = ARRAY_LEN(esp_encrypt_error_strings),

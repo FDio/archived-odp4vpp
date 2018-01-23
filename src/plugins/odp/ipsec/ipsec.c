@@ -20,6 +20,7 @@
 #include <vnet/ip/ip.h>
 #include <vnet/interface.h>
 
+#include <odp/odp_packet.h>
 #include <odp/ipsec/ipsec.h>
 #include <odp/ipsec/esp.h>
 
@@ -84,6 +85,11 @@ int				// should flow_label be here?
 create_odp_sa (ipsec_sa_t * sa, sa_data_t * sa_sess_data, int flow_label,
 	       int is_outbound)
 {
+  odp_crypto_main_t *ocm = &odp_crypto_main;
+  u32 thread_index = vlib_get_thread_index ();
+  odp_crypto_worker_main_t *cwm =
+    vec_elt_at_index (ocm->workers, thread_index);
+
   odp_ipsec_sa_param_t sa_params;
   odp_ipsec_sa_param_init (&sa_params);
 
@@ -139,7 +145,8 @@ create_odp_sa (ipsec_sa_t * sa, sa_data_t * sa_sess_data, int flow_label,
 
   sa_params.spi = sa->spi;
 
-  sa_params.dest_queue = ODP_QUEUE_INVALID;
+  sa_params.dest_queue =
+    (is_outbound ? cwm->post_encrypt : cwm->post_decrypt);
   sa_params.context = NULL;
   sa_params.context_len = 0;
 
@@ -174,7 +181,7 @@ create_sess (ipsec_sa_t * sa, sa_data_t * sa_sess_data, int is_outbound)
 
   crypto_params.auth_cipher_text = 1;
 
-  crypto_params.pref_mode = ODP_CRYPTO_ASYNC;
+  crypto_params.pref_mode = (is_async ? ODP_CRYPTO_ASYNC : ODP_CRYPTO_SYNC);
   crypto_params.compl_queue =
     (is_outbound ? cwm->post_encrypt : cwm->post_decrypt);
   crypto_params.output_pool = ODP_POOL_INVALID;
@@ -315,9 +322,11 @@ ipsec_init (vlib_main_t * vm, u8 ipsec_api)
   ipsec_node = vlib_get_node_by_name (vm, (u8 *) "ipsec-output-ip4");
   ASSERT (ipsec_node);
   if (ipsec_api)
-    crypto_node = vlib_get_node_by_name (vm, (u8 *) "odp-ipsec-esp-encrypt");
+      crypto_node =
+	vlib_get_node_by_name (vm, (u8 *) "odp-ipsec-esp-encrypt");
   else
-    crypto_node = vlib_get_node_by_name (vm, (u8 *) "odp-crypto-esp-encrypt");
+      crypto_node =
+	vlib_get_node_by_name (vm, (u8 *) "odp-crypto-esp-encrypt");
   ASSERT (crypto_node);
   im->esp_encrypt_node_index = crypto_node->index;
   im->esp_encrypt_next_index =
@@ -328,7 +337,8 @@ ipsec_init (vlib_main_t * vm, u8 ipsec_api)
   if (ipsec_api)
     crypto_node = vlib_get_node_by_name (vm, (u8 *) "odp-ipsec-esp-decrypt");
   else
-    crypto_node = vlib_get_node_by_name (vm, (u8 *) "odp-crypto-esp-decrypt");
+      crypto_node =
+	vlib_get_node_by_name (vm, (u8 *) "odp-crypto-esp-decrypt");
   ASSERT (crypto_node);
   im->esp_decrypt_node_index = crypto_node->index;
   im->esp_decrypt_next_index =

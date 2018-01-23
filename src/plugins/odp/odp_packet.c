@@ -25,6 +25,7 @@ odp_if_config_t *if_config;
 odp_crypto_main_t odp_crypto_main;
 u8 enable_odp_crypto;
 u8 ipsec_api;
+u8 is_async;
 
 static u32
 odp_packet_eth_flag_change (vnet_main_t * vnm, vnet_hw_interface_t * hi,
@@ -435,6 +436,10 @@ odp_config (vlib_main_t * vm, unformat_input_t * input)
 	{
 	  ipsec_api = 1;
 	}
+      else if (unformat (input, "async"))
+        {
+          is_async = 1;
+        }
       else if (unformat (input, "%s", &param))
 	{
 	  clib_warning ("%s: Unknown option %s\n", __func__, param);
