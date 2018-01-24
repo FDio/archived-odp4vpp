@@ -132,6 +132,13 @@ create_odp_sa (ipsec_sa_t * sa, sa_data_t * sa_sess_data, int flow_label,
 	}
     }
 
+  if (sa_params.dir == ODP_IPSEC_DIR_INBOUND && is_inline)
+    {
+      sa_params.inbound.lookup_mode = ODP_IPSEC_LOOKUP_SPI;
+      sa_params.inbound.lookup_param.ip_version =
+	(sa->is_tunnel_ip6 ? ODP_IPSEC_IPV6 : ODP_IPSEC_IPV4);
+    }
+
   sa_params.crypto.cipher_alg = ODP_CIPHER_ALG_AES_CBC;
   sa_params.crypto.cipher_key.data = sa->crypto_key;
   sa_params.crypto.cipher_key.length = sa->crypto_key_len;
@@ -378,6 +385,29 @@ ipsec_init (vlib_main_t * vm, u8 ipsec_api)
     {
       ocm->workers[0].post_encrypt = ocm->workers[1].post_encrypt;
       ocm->workers[0].post_decrypt = ocm->workers[1].post_decrypt;
+    }
+
+  if (ipsec_api)
+    {
+      odp_ipsec_config_t ipsec_config;
+      odp_ipsec_config_init (&ipsec_config);
+
+      if (is_inline)
+	{
+	  ipsec_config.inbound_mode = ODP_IPSEC_OP_MODE_INLINE;
+	  ipsec_config.outbound_mode = ODP_IPSEC_OP_MODE_INLINE;
+	}
+      else if (is_async)
+	{
+	  ipsec_config.inbound_mode = ODP_IPSEC_OP_MODE_ASYNC;
+	  ipsec_config.outbound_mode = ODP_IPSEC_OP_MODE_ASYNC;
+	}
+      else
+	{
+	  ipsec_config.inbound_mode = ODP_IPSEC_OP_MODE_SYNC;
+	  ipsec_config.outbound_mode = ODP_IPSEC_OP_MODE_SYNC;
+	}
+      odp_ipsec_config (&ipsec_config);
     }
 
   return 0;

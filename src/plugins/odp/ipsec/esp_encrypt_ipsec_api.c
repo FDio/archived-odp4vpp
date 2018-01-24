@@ -108,6 +108,10 @@ esp_encrypt_node_fn (vlib_main_t * vm,
   odp_crypto_main_t *ocm = &odp_crypto_main;
   u32 thread_index = vlib_get_thread_index ();
 
+  vnet_main_t *vnm = vnet_get_main ();
+  odp_packet_main_t *om = odp_packet_main;
+  vnet_interface_main_t *vint_main = &vnm->interface_main;
+
   ipsec_alloc_empty_buffers (vm, im);
 
   u32 *empty_buffers = im->empty_buffers[thread_index];
@@ -135,10 +139,12 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	{
 	  u32 bi0, next0;
 	  vlib_buffer_t *i_b0, *o_b0;
+	  vnet_sw_interface_t *sw;
+	  vnet_hw_interface_t *hw;
 	  u32 sa_index0;
 	  ipsec_sa_t *sa0;
 	  ip6_header_t *h6 = 0;
-	  //u8 transport_mode = 0;
+	  odp_packet_if_t *oif;
 	  sa_data_t *sa_sess_data;
 	  u32 flow_label;
 
@@ -201,6 +207,7 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	    {
 	      odp_packet_t pkt = odp_packet_from_vlib_buffer (i_b0);
 	      odp_packet_t out_pkt;
+	      odp_ipsec_out_inline_param_t ipsec_inline_params;
 
 	      odp_ipsec_out_param_t oiopt;
 	      oiopt.num_sa = 1;
@@ -218,7 +225,29 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 
 	      int ret;
 
-              if (is_async)
+	      if (is_inline && next0 == ESP_ENCRYPT_NEXT_INTERFACE_OUTPUT)
+		{
+		  sw =
+		    vnet_get_sw_interface (vnm,
+					   vnet_buffer (i_b0)->sw_if_index
+					   [VLIB_TX]);
+		  hw = vnet_get_hw_interface (vnm, sw->hw_if_index);
+		  oif = pool_elt_at_index (om->interfaces, hw->dev_instance);
+		  ipsec_inline_params.pktio = oif->pktio;
+		  ipsec_inline_params.outer_hdr.ptr =
+		    (u8 *) & vnet_buffer (i_b0)->post_crypto.dst_mac;
+		  ipsec_inline_params.outer_hdr.len =
+		    sizeof (ethernet_header_t);
+		  ret =
+		    odp_ipsec_out_inline (&pkt, 1, &oiopt,
+					  &ipsec_inline_params);
+		  vlib_increment_combined_counter
+		    (vint_main->combined_sw_if_counters +
+		     VNET_INTERFACE_COUNTER_TX, thread_index,
+		     vnet_buffer (i_b0)->sw_if_index[VLIB_TX], 1,
+		     i_b0->current_length);
+		}
+              else if (is_async)
 		ret = odp_ipsec_out_enq (&pkt, 1, &oiopt);
 	      else
 		ret = odp_ipsec_out (&pkt, 1, &out_pkt, &processed, &oiopt);
@@ -230,7 +259,9 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 		}
 
 
-	      if (!is_async)
+	      if (!is_async
+		  && !(is_inline
+		       && next0 == ESP_ENCRYPT_NEXT_INTERFACE_OUTPUT))
 		{
 		  o_b0 = vlib_buffer_from_odp_packet (out_pkt);
 
@@ -240,37 +271,38 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 			   (intptr_t) o_b0->data +
 			   (intptr_t) odp_packet_l3_offset (out_pkt));
 		  o_b0->current_length = odp_packet_len (out_pkt);
-		}
 
-	    }
-
-	  if (!is_async)
-	    {
-	      if (!sa0->is_tunnel)
-		{
-		  if (vnet_buffer (o_b0)->sw_if_index[VLIB_TX] != ~0)
+		  if (!sa0->is_tunnel)
 		    {
-		      ethernet_header_t *ieh0, *oeh0;
-		      ieh0 =
-			(ethernet_header_t *) & vnet_buffer (i_b0)->post_crypto.dst_mac;
-		      oeh0 =
-			(ethernet_header_t *) ((uintptr_t)
-					       vlib_buffer_get_current (o_b0)
-					       - sizeof (ethernet_header_t));
-		      clib_memcpy (oeh0, ieh0, sizeof (ethernet_header_t));
-		    }
-		  o_b0->current_data -= sizeof (ethernet_header_t);
-		  o_b0->current_length += sizeof (ethernet_header_t);
-		}
+		      if (vnet_buffer (o_b0)->sw_if_index[VLIB_TX] != ~0)
+			{
+			  ethernet_header_t *ieh0, *oeh0;
+			  ieh0 =
+			    (ethernet_header_t *) &
+			    vnet_buffer (i_b0)->post_crypto.dst_mac;
+			  oeh0 =
+			    (ethernet_header_t *) ((uintptr_t)
+						   vlib_buffer_get_current
+						   (o_b0) -
+						   sizeof
+						   (ethernet_header_t));
+			  clib_memcpy (oeh0, ieh0,
+				       sizeof (ethernet_header_t));
+			}
 
-	      vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
-					       to_next, n_left_to_next, bi0,
-					       next0);
-	    }
-	  else
-	    {
-	      to_next -= 1;
-	      n_left_to_next += 1;
+		      o_b0->current_data -= sizeof (ethernet_header_t);
+		      o_b0->current_length += sizeof (ethernet_header_t);
+		    }
+
+		  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
+						   to_next, n_left_to_next,
+						   bi0, next0);
+		}
+	      else
+		{
+		  to_next -= 1;
+		  n_left_to_next += 1;
+		}
 	    }
 	trace:
 	  if (PREDICT_FALSE (i_b0->flags & VLIB_BUFFER_IS_TRACED))
@@ -314,7 +346,6 @@ VLIB_REGISTER_NODE (odp_ipsec_esp_encrypt_node) = {
 };
 
 VLIB_NODE_FUNCTION_MULTIARCH (odp_ipsec_esp_encrypt_node, esp_encrypt_node_fn)
-
      static uword
        esp_encrypt_post_node_fn (vlib_main_t * vm,
 				 vlib_node_runtime_t * node,

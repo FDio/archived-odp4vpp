@@ -83,6 +83,7 @@ extern odp_if_mode_t def_if_mode;
 extern u8 enable_odp_crypto;
 extern u8 ipsec_api;
 extern u8 is_async;
+extern u8 is_inline;
 
 u32 odp_packet_create_if (vlib_main_t * vm, u8 * host_if_name,
 			  u8 * hw_addr_set, u32 * sw_if_index,
