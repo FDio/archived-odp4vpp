@@ -10,6 +10,7 @@
 #include <vlib/unix/unix.h>
 #include <vnet/ip/ip.h>
 #include <vnet/ethernet/ethernet.h>
+#include <odp/ipsec/ipsec.h>
 #include <vnet/plugin/plugin.h>
 #include <vpp/app/version.h>
 #include <odp/odp_packet.h>

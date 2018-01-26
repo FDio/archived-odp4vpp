@@ -71,6 +71,11 @@ create_sess (ipsec_sa_t * sa, sa_data_t * sa_sess_data, int is_outbound)
   odp_crypto_session_param_t crypto_params;
   odp_crypto_session_param_init (&crypto_params);
 
+  odp_crypto_main_t *ocm = &odp_crypto_main;
+  u32 thread_index = vlib_get_thread_index ();
+  odp_crypto_worker_main_t *cwm =
+    vec_elt_at_index (ocm->workers, thread_index);
+
   esp_main_t *em = &odp_esp_main;
   int trunc_size = em->esp_integ_algs[sa->integ_alg].trunc_size;
 
@@ -80,9 +85,9 @@ create_sess (ipsec_sa_t * sa, sa_data_t * sa_sess_data, int is_outbound)
 
   crypto_params.auth_cipher_text = 1;
 
-  /* Synchronous mode */
-  crypto_params.pref_mode = ODP_CRYPTO_SYNC;
-  crypto_params.compl_queue = ODP_QUEUE_INVALID;
+  crypto_params.pref_mode = ODP_CRYPTO_ASYNC;
+  crypto_params.compl_queue =
+    (is_outbound ? cwm->post_encrypt : cwm->post_decrypt);
   crypto_params.output_pool = ODP_POOL_INVALID;
 
   if (sa->crypto_alg == IPSEC_CRYPTO_ALG_AES_CBC_128)
@@ -209,6 +214,7 @@ ipsec_init (vlib_main_t * vm)
   odp_crypto_main_t *ocm = &odp_crypto_main;
   vlib_thread_main_t *tm = vlib_get_thread_main ();
   vlib_node_t *ipsec_node, *crypto_node, *error_node;
+  odp_crypto_worker_main_t *cwm;
 
   memset (im, 0, sizeof (im[0]));
 
@@ -249,7 +255,35 @@ ipsec_init (vlib_main_t * vm)
   vec_alloc (ocm->workers, tm->n_vlib_mains);
   _vec_len (ocm->workers) = tm->n_vlib_mains;
 
+  for (cwm = ocm->workers + 1; cwm < vec_end (ocm->workers); cwm++)
+    {
+      cwm->post_encrypt = odp_queue_create (NULL, NULL);
+      cwm->post_decrypt = odp_queue_create (NULL, NULL);
+    }
+
   esp_init ();
+
+  int i;
+  for (i = 1; i < tm->n_vlib_mains; i++)
+    vlib_node_set_state (vlib_mains[i], odp_crypto_input_node.index,
+			 VLIB_NODE_STATE_POLLING);
+
+  /* If there are no worker threads, enable polling
+     crypto devices on the main thread, else
+     assign the post crypt queues of the second
+     thread to the main thread crypto sessions */
+  if (tm->n_vlib_mains == 1)
+    {
+      ocm->workers[0].post_encrypt = odp_queue_create (NULL, NULL);
+      ocm->workers[0].post_decrypt = odp_queue_create (NULL, NULL);
+      vlib_node_set_state (vlib_mains[0], odp_crypto_input_node.index,
+			   VLIB_NODE_STATE_POLLING);
+    }
+  else
+    {
+      ocm->workers[0].post_encrypt = ocm->workers[1].post_encrypt;
+      ocm->workers[0].post_decrypt = ocm->workers[1].post_decrypt;
+    }
 
   return 0;
 }

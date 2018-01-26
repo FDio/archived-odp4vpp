@@ -69,6 +69,7 @@ typedef struct
 } esp_encrypt_trace_t;
 
 vlib_node_registration_t odp_crypto_esp_encrypt_node;
+vlib_node_registration_t odp_crypto_esp_encrypt_post_node;
 
 /* packet trace format function */
 static u8 *
@@ -84,6 +85,18 @@ format_esp_encrypt_trace (u8 * s, va_list * args)
 	      format_ipsec_integ_alg, t->integ_alg);
   return s;
 }
+
+/* packet trace format function */
+static u8 *
+format_esp_encrypt_post_trace (u8 * s, va_list * args)
+{
+  CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
+  CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
+
+  s = format (s, "POST ENCRYPT CRYPTO (ODP) esp");
+  return s;
+}
+
 
 static uword
 esp_encrypt_node_fn (vlib_main_t * vm,
@@ -118,6 +131,7 @@ esp_encrypt_node_fn (vlib_main_t * vm,
   while (n_left_from > 0)
     {
       u32 n_left_to_next;
+      u32 buffers_passed = 0;
 
       vlib_get_next_frame (vm, node, next_index, to_next, n_left_to_next);
 
@@ -138,6 +152,7 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	  u32 ip_proto = 0;
 	  u8 transport_mode = 0;
 	  sa_data_t *sa_sess_data;
+	  odp_bool_t posted = 0;
 
 	  bi0 = from[0];
 	  from += 1;
@@ -331,7 +346,6 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 		BLOCK_SIZE * blocks + sizeof (esp_header_t) + IV_SIZE;
 
 	      odp_crypto_op_param_t crypto_op_params;
-	      odp_bool_t posted = 0;
 	      odp_crypto_op_result_t result;
 
 	      crypto_op_params.session = sa_sess_data->sess;
@@ -370,6 +384,8 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	      b0->current_length +=
 		em->esp_integ_algs[sa0->integ_alg].trunc_size;
 
+	      vnet_buffer (b0)->post_crypto.next_index = next0;
+
 	      int ret =
 		odp_crypto_operation (&crypto_op_params, &posted, &result);
 	      if (ret != 0)
@@ -406,8 +422,6 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	trace:
 	  if (PREDICT_FALSE (b0->flags & VLIB_BUFFER_IS_TRACED))
 	    {
-	      b0->flags |= VLIB_BUFFER_IS_TRACED;
-	      b0->trace_index = b0->trace_index;
 	      esp_encrypt_trace_t *tr =
 		vlib_add_trace (vm, node, b0, sizeof (*tr));
 	      tr->spi = sa0->spi;
@@ -416,11 +430,17 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	      tr->integ_alg = sa0->integ_alg;
 	    }
 
-	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
-					   to_next, n_left_to_next, bi0,
-					   next0);
+	  if (!posted)
+	    {
+	      vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
+					       to_next, n_left_to_next, bi0,
+					       next0);
+	      buffers_passed += 1;
+	    }
+
 	}
-      vlib_put_next_frame (vm, node, next_index, n_left_to_next);
+      if (buffers_passed > 0)
+	vlib_put_next_frame (vm, node, next_index, n_left_to_next);
     }
   vlib_node_increment_counter (vm, odp_crypto_esp_encrypt_node.index,
 			       ESP_ENCRYPT_ERROR_RX_PKTS,
@@ -455,6 +475,76 @@ VLIB_REGISTER_NODE (odp_crypto_esp_encrypt_node) = {
 /* *INDENT-ON* */
 
 VLIB_NODE_FUNCTION_MULTIARCH (odp_crypto_esp_encrypt_node, esp_encrypt_node_fn)
+     static uword
+       esp_encrypt_post_node_fn (vlib_main_t * vm,
+				 vlib_node_runtime_t * node,
+				 vlib_frame_t * from_frame)
+{
+  u32 n_left_from, *from, *to_next = 0, next_index;
+  from = vlib_frame_vector_args (from_frame);
+  n_left_from = from_frame->n_vectors;
+
+  next_index = node->cached_next_index;
+
+  while (n_left_from > 0)
+    {
+      u32 n_left_to_next;
+
+      vlib_get_next_frame (vm, node, next_index, to_next, n_left_to_next);
+
+      while (n_left_from > 0 && n_left_to_next > 0)
+	{
+	  u32 bi0, next0;
+	  vlib_buffer_t *b0 = 0;
+
+	  bi0 = from[0];
+	  from += 1;
+	  n_left_from -= 1;
+	  n_left_to_next -= 1;
+
+	  b0 = vlib_get_buffer (vm, bi0);
+
+	  to_next[0] = bi0;
+	  to_next += 1;
+
+	  next0 = vnet_buffer (b0)->post_crypto.next_index;
+
+	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
+					   to_next, n_left_to_next, bi0,
+					   next0);
+	  if (PREDICT_FALSE (b0->flags & VLIB_BUFFER_IS_TRACED))
+	    vlib_add_trace (vm, node, b0, 0);
+
+	}
+      vlib_put_next_frame (vm, node, next_index, n_left_to_next);
+    }
+  vlib_node_increment_counter (vm, odp_crypto_esp_encrypt_post_node.index,
+			       ESP_ENCRYPT_ERROR_RX_PKTS,
+			       from_frame->n_vectors);
+
+  return from_frame->n_vectors;
+}
+
+/* *INDENT-OFF* */
+VLIB_REGISTER_NODE (odp_crypto_esp_encrypt_post_node) = {
+  .function = esp_encrypt_post_node_fn,
+  .name = "odp-crypto-esp-encrypt-post",
+  .vector_size = sizeof (u32),
+  .format_trace = format_esp_encrypt_post_trace,
+  .type = VLIB_NODE_TYPE_INTERNAL,
+
+  .n_errors = ARRAY_LEN(esp_encrypt_error_strings),
+  .error_strings = esp_encrypt_error_strings,
+
+  .n_next_nodes = ESP_ENCRYPT_N_NEXT,
+  .next_nodes = {
+#define _(s,n) [ESP_ENCRYPT_NEXT_##s] = n,
+    foreach_esp_encrypt_next
+#undef _
+  },
+};
+/* *INDENT-ON* */
+
 /*
  * fd.io coding-style-patch-verification: ON
  *

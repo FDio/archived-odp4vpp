@@ -23,7 +23,8 @@ odp_plugin_la_SOURCES = odp/cli.c		\
         odp/thread.c				\
 	odp/ipsec/ipsec.c			\
 	odp/ipsec/esp_encrypt.c			\
-	odp/ipsec/esp_decrypt.c
+	odp/ipsec/esp_decrypt.c			\
+	odp/ipsec/crypto_input.c
 
 noinst_HEADERS += odp/odp_packet.h    		\
 	odp/ipsec/ipsec.h			\

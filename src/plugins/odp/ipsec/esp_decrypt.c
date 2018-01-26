@@ -70,6 +70,7 @@ typedef struct
 } esp_decrypt_trace_t;
 
 vlib_node_registration_t odp_crypto_esp_decrypt_node;
+vlib_node_registration_t odp_crypto_esp_decrypt_post_node;
 
 /* packet trace format function */
 static u8 *
@@ -82,6 +83,17 @@ format_esp_decrypt_trace (u8 * s, va_list * args)
   s = format (s, "(ODP) esp: crypto %U integrity %U",
 	      format_ipsec_crypto_alg, t->crypto_alg,
 	      format_ipsec_integ_alg, t->integ_alg);
+  return s;
+}
+
+/* packet trace format function */
+static u8 *
+format_esp_decrypt_post_trace (u8 * s, va_list * args)
+{
+  CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
+  CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
+
+  s = format (s, "POST DECRYPT CRYPTO (ODP)");
   return s;
 }
 
@@ -117,6 +129,7 @@ esp_decrypt_node_fn (vlib_main_t * vm,
   while (n_left_from > 0)
     {
       u32 n_left_to_next;
+      u32 buffers_passed = 0;
 
       vlib_get_next_frame (vm, node, next_index, to_next, n_left_to_next);
 
@@ -134,7 +147,9 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 	  u8 tunnel_mode = 1;
 	  u8 transport_ip6 = 0;
 	  sa_data_t *sa_sess_data;
-
+	  odp_crypto_op_param_t crypto_op_params;
+	  odp_crypto_op_result_t result;
+	  odp_bool_t posted = 0;
 
 	  bi0 = from[0];
 	  from += 1;
@@ -187,10 +202,6 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 		  goto trace;
 		}
 	    }
-
-	  odp_crypto_op_param_t crypto_op_params;
-	  odp_bool_t posted = 0;
-	  odp_crypto_op_result_t result;
 
 	  crypto_op_params.session = sa_sess_data->sess;
 	  crypto_op_params.ctx = NULL;
@@ -399,23 +410,28 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 		next0 = ESP_DECRYPT_NEXT_IPSEC_GRE_INPUT;
 
 	      vnet_buffer (b0)->sw_if_index[VLIB_TX] = (u32) ~ 0;
+
+	      vnet_buffer (b0)->post_crypto.next_index = next0;
 	    }
 
 	trace:
 	  if (PREDICT_FALSE (b0->flags & VLIB_BUFFER_IS_TRACED))
 	    {
-	      b0->flags |= VLIB_BUFFER_IS_TRACED;
-	      b0->trace_index = b0->trace_index;
 	      esp_decrypt_trace_t *tr =
 		vlib_add_trace (vm, node, b0, sizeof (*tr));
 	      tr->crypto_alg = sa0->crypto_alg;
 	      tr->integ_alg = sa0->integ_alg;
 	    }
 
-	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index, to_next,
-					   n_left_to_next, bi0, next0);
+	  if (!posted)
+	    {
+	      vlib_validate_buffer_enqueue_x1 (vm, node, next_index, to_next,
+					       n_left_to_next, bi0, next0);
+	      buffers_passed += 1;
+	    }
 	}
-      vlib_put_next_frame (vm, node, next_index, n_left_to_next);
+      if (buffers_passed > 0)
+	vlib_put_next_frame (vm, node, next_index, n_left_to_next);
     }
   vlib_node_increment_counter (vm, odp_crypto_esp_decrypt_node.index,
 			       ESP_DECRYPT_ERROR_RX_PKTS,
@@ -450,6 +466,76 @@ VLIB_REGISTER_NODE (odp_crypto_esp_decrypt_node) = {
 /* *INDENT-ON* */
 
 VLIB_NODE_FUNCTION_MULTIARCH (odp_crypto_esp_decrypt_node, esp_decrypt_node_fn)
+     static uword
+       esp_decrypt_post_node_fn (vlib_main_t * vm,
+				 vlib_node_runtime_t * node,
+				 vlib_frame_t * from_frame)
+{
+  u32 n_left_from, *from, *to_next = 0, next_index;
+  from = vlib_frame_vector_args (from_frame);
+  n_left_from = from_frame->n_vectors;
+
+  next_index = node->cached_next_index;
+
+  while (n_left_from > 0)
+    {
+      u32 n_left_to_next;
+
+      vlib_get_next_frame (vm, node, next_index, to_next, n_left_to_next);
+
+      while (n_left_from > 0 && n_left_to_next > 0)
+	{
+	  u32 bi0, next0;
+	  vlib_buffer_t *b0 = 0;
+
+	  bi0 = from[0];
+	  from += 1;
+	  n_left_from -= 1;
+	  n_left_to_next -= 1;
+
+	  b0 = vlib_get_buffer (vm, bi0);
+
+	  to_next[0] = bi0;
+	  to_next += 1;
+
+	  next0 = vnet_buffer (b0)->post_crypto.next_index;
+
+	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
+					   to_next, n_left_to_next, bi0,
+					   next0);
+	  if (PREDICT_FALSE (b0->flags & VLIB_BUFFER_IS_TRACED))
+	    vlib_add_trace (vm, node, b0, 0);
+	}
+      vlib_put_next_frame (vm, node, next_index, n_left_to_next);
+
+    }
+  vlib_node_increment_counter (vm, odp_crypto_esp_decrypt_post_node.index,
+			       ESP_DECRYPT_ERROR_RX_PKTS,
+			       from_frame->n_vectors);
+
+  return from_frame->n_vectors;
+}
+
+/* *INDENT-OFF* */
+VLIB_REGISTER_NODE (odp_crypto_esp_decrypt_post_node) = {
+  .function = esp_decrypt_post_node_fn,
+  .name = "odp-crypto-esp-decrypt-post",
+  .vector_size = sizeof (u32),
+  .format_trace = format_esp_decrypt_post_trace,
+  .type = VLIB_NODE_TYPE_INTERNAL,
+
+  .n_errors = ARRAY_LEN(esp_decrypt_error_strings),
+  .error_strings = esp_decrypt_error_strings,
+
+  .n_next_nodes = ESP_DECRYPT_N_NEXT,
+  .next_nodes = {
+#define _(s,n) [ESP_DECRYPT_NEXT_##s] = n,
+    foreach_esp_decrypt_next
+#undef _
+  },
+};
+/* *INDENT-ON* */
+
 /*
  * fd.io coding-style-patch-verification: ON
  *
