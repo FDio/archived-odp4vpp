@@ -278,6 +278,7 @@ odp_packet_delete_if (vlib_main_t * vm, u8 * host_if_name)
   odp_packet_main_t *om = odp_packet_main;
   odp_packet_if_t *oif = 0;
   uword *p;
+  int q;
 
   p = mhash_get (&om->if_index_by_host_if_name, host_if_name);
 
@@ -290,7 +291,8 @@ odp_packet_delete_if (vlib_main_t * vm, u8 * host_if_name)
   oif = pool_elt_at_index (om->interfaces, p[0]);
   vnet_hw_interface_set_flags (vnm, oif->hw_if_index, 0);
 
-  vnet_hw_interface_unassign_rx_thread (vnm, oif->hw_if_index, 0);
+  for (q = 0; q < oif->m.num_rx_queues; q++)
+    vnet_hw_interface_unassign_rx_thread (vnm, oif->hw_if_index, q);
 
   om->if_count--;
 
