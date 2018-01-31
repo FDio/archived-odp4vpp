@@ -140,9 +140,7 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 	  u32 sa_index0 = ~0;
 	  u32 seq;
 	  ip4_header_t *ih4 = 0, *oh4 = 0;
-	  ip6_header_t *oh6 = 0;
-	  ip4_header_t old_ip4_hdr;
-	  ip6_header_t old_ip6_hdr;
+	  ip6_header_t *ih6 = 0, *oh6 = 0;
 	  u8 tunnel_mode = 1;
 	  u8 transport_ip6 = 0;
 	  sa_data_t *sa_sess_data;
@@ -246,6 +244,8 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 		  ((ih4->ip_version_and_header_length & 0xF0) != 0x40))
 		{
 		  ip_hdr_size = sizeof (ip6_header_t);
+		  ih6 =
+		    (ip6_header_t *) (b0->data + sizeof (ethernet_header_t));
 		}
 	      else
 		{
@@ -273,10 +273,6 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 						  + sizeof (esp_header_t) +
 						  IV_SIZE -
 						  sizeof (ip6_header_t));
-			  old_ip6_hdr =
-			    *((ip6_header_t *) ((uintptr_t)
-						vlib_buffer_get_current (b0) -
-						ip_hdr_size));
 			}
 		      else
 			{
@@ -294,10 +290,6 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 					  vlib_buffer_get_current (b0) +
 					  sizeof (esp_header_t) + IV_SIZE -
 					  sizeof (ip4_header_t));
-		      old_ip4_hdr =
-			*((ip4_header_t *) ((uintptr_t)
-					    vlib_buffer_get_current (b0) -
-					    ip_hdr_size));
 		    }
 		}
 
@@ -363,20 +355,10 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 		{
 		  if (PREDICT_FALSE (transport_ip6))
 		    {
+                      memmove(oh6, ih6, sizeof(ip6_header_t));
 
 		      next0 = ESP_DECRYPT_NEXT_IP6_INPUT;
-		      oh6->ip_version_traffic_class_and_flow_label =
-			old_ip6_hdr.ip_version_traffic_class_and_flow_label;
 		      oh6->protocol = f0->next_header;
-		      oh6->hop_limit = old_ip6_hdr.hop_limit;
-		      oh6->src_address.as_u64[0] =
-			old_ip6_hdr.src_address.as_u64[0];
-		      oh6->src_address.as_u64[1] =
-			old_ip6_hdr.src_address.as_u64[1];
-		      oh6->dst_address.as_u64[0] =
-			old_ip6_hdr.dst_address.as_u64[0];
-		      oh6->dst_address.as_u64[1] =
-			old_ip6_hdr.dst_address.as_u64[1];
 		      oh6->payload_length =
 			clib_host_to_net_u16 (vlib_buffer_length_in_chain
 					      (vm,
@@ -384,17 +366,13 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 		    }
 		  else
 		    {
+                      memmove(oh4, ih4, sizeof(ip4_header_t));
+
 		      next0 = ESP_DECRYPT_NEXT_IP4_INPUT;
 		      oh4->ip_version_and_header_length = 0x45;
-		      oh4->tos = old_ip4_hdr.tos;
 		      oh4->fragment_id = 0;
 		      oh4->flags_and_fragment_offset = 0;
-		      oh4->ttl = old_ip4_hdr.ttl;
 		      oh4->protocol = f0->next_header;
-		      oh4->src_address.as_u32 =
-			old_ip4_hdr.src_address.as_u32;
-		      oh4->dst_address.as_u32 =
-			old_ip4_hdr.dst_address.as_u32;
 		      oh4->length =
 			clib_host_to_net_u16 (vlib_buffer_length_in_chain
 					      (vm, b0));
