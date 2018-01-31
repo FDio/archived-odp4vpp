@@ -394,6 +394,8 @@ odp_config (vlib_main_t * vm, unformat_input_t * input)
   char *param = NULL;
   unformat_input_t sub_input;
 
+  unformat_skip_white_space (input);
+
   while (unformat_check_input (input) != UNFORMAT_END_OF_INPUT)
     {
       if (unformat (input, "rx-sched-wait %u", &rx_sched_wait))
@@ -558,18 +560,22 @@ odp_packet_init (vlib_main_t * vm)
 VLIB_INIT_FUNCTION (odp_packet_init);
 
 static clib_error_t *
-odp_packet_exit (vlib_main_t *vm)
+odp_packet_exit (vlib_main_t * vm)
 {
   odp_packet_main_t *om = odp_packet_main;
   odp_packet_if_t *port;
 
+  vlib_worker_thread_barrier_sync (vm);
+
+  /* *INDENT-OFF* */
   pool_foreach (port, om->interfaces,
     ({
       odp_packet_delete_if (vm, port->host_if_name);
     }));
+  /* *INDENT-ON* */
 
   odp_pool_destroy (om->pool);
-  odp_shm_free (odp_shm_lookup("odp_packet_main"));
+  odp_shm_free (odp_shm_lookup ("odp_packet_main"));
   odp_packet_main = 0x0;
 
   return 0;

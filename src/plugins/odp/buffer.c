@@ -150,9 +150,6 @@ fill_free_list (vlib_main_t * vm,
 
 	  vec_add1_aligned (fl->buffers, bi, CLIB_CACHE_LINE_BYTES);
 
-	  if (CLIB_DEBUG > 0)
-	    vlib_buffer_set_known_state (vm, bi, VLIB_BUFFER_KNOWN_FREE);
-
 	  /* Initialize all new buffers. */
 	  vlib_buffer_init_for_free_list (b, fl);
 	  if (fl->buffer_init_function)
