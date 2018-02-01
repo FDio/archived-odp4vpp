@@ -79,7 +79,7 @@ format_esp_decrypt_trace (u8 * s, va_list * args)
   CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
   esp_decrypt_trace_t *t = va_arg (*args, esp_decrypt_trace_t *);
 
-  s = format (s, "(ODP IPsec API) esp: crypto %U integrity %U",
+  s = format (s, "odp-ipsec esp: crypto %U integrity %U",
 	      format_ipsec_crypto_alg, t->crypto_alg,
 	      format_ipsec_integ_alg, t->integ_alg);
   return s;
@@ -92,13 +92,14 @@ format_esp_decrypt_post_trace (u8 * s, va_list * args)
   CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
   CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
 
-  s = format (s, "POST DECRYPT CRYPTO (ODP)");
+  s = format (s, "odp-ipsec post esp (decrypt)");
   return s;
 }
 
 static uword
-esp_decrypt_node_fn (vlib_main_t * vm,
-		     vlib_node_runtime_t * node, vlib_frame_t * from_frame)
+odp_ipsec_esp_decrypt_node_fn (vlib_main_t * vm,
+			       vlib_node_runtime_t * node,
+			       vlib_frame_t * from_frame)
 {
   u32 n_left_from, *from, next_index, *to_next;
   ipsec_main_t *im = &ipsec_main;
@@ -196,10 +197,10 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 
 	  int ret;
 
-          if (!is_async)
-            ret = odp_ipsec_in (&pkt, 1, &out_pkt, &processed, &oiopt);
-          else
-            ret = odp_ipsec_in_enq(&pkt, 1, &oiopt);
+	  if (!is_async)
+	    ret = odp_ipsec_in (&pkt, 1, &out_pkt, &processed, &oiopt);
+	  else
+	    ret = odp_ipsec_in_enq (&pkt, 1, &oiopt);
 
 	  if (ret < 1)
 	    {
@@ -253,7 +254,7 @@ free_buffers_and_exit:
 
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (odp_ipsec_esp_decrypt_node) = {
-  .function = esp_decrypt_node_fn,
+  .function = odp_ipsec_esp_decrypt_node_fn,
   .name = "odp-ipsec-esp-decrypt",
   .vector_size = sizeof (u32),
   .format_trace = format_esp_decrypt_trace,
@@ -270,8 +271,7 @@ VLIB_REGISTER_NODE (odp_ipsec_esp_decrypt_node) = {
   },
 };
 
-VLIB_NODE_FUNCTION_MULTIARCH (odp_ipsec_esp_decrypt_node, esp_decrypt_node_fn)
-
+VLIB_NODE_FUNCTION_MULTIARCH (odp_ipsec_esp_decrypt_node, odp_ipsec_esp_decrypt_node_fn)
      static uword
        esp_decrypt_post_node_fn (vlib_main_t * vm,
 				 vlib_node_runtime_t * node,

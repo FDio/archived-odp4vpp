@@ -79,7 +79,7 @@ format_esp_decrypt_trace (u8 * s, va_list * args)
   CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
   esp_decrypt_trace_t *t = va_arg (*args, esp_decrypt_trace_t *);
 
-  s = format (s, "(ODP) esp: crypto %U integrity %U",
+  s = format (s, "odp-crypto esp: crypto %U integrity %U",
 	      format_ipsec_crypto_alg, t->crypto_alg,
 	      format_ipsec_integ_alg, t->integ_alg);
   return s;
@@ -92,13 +92,14 @@ format_esp_decrypt_post_trace (u8 * s, va_list * args)
   CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
   CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
 
-  s = format (s, "POST DECRYPT CRYPTO (ODP)");
+  s = format (s, "odp-crypto post esp (decrypt)");
   return s;
 }
 
 static uword
-esp_decrypt_node_fn (vlib_main_t * vm,
-		     vlib_node_runtime_t * node, vlib_frame_t * from_frame)
+odp_crypto_esp_decrypt_node_fn (vlib_main_t * vm,
+				vlib_node_runtime_t * node,
+				vlib_frame_t * from_frame)
 {
   u32 n_left_from, *from, next_index, *to_next;
   ipsec_main_t *im = &ipsec_main;
@@ -176,7 +177,8 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 	      if (PREDICT_FALSE (rv))
 		{
 		  clib_warning ("anti-replay SPI %u seq %u", sa0->spi, seq);
-		  vlib_node_increment_counter (vm, odp_crypto_esp_decrypt_node.index,
+		  vlib_node_increment_counter (vm,
+					       odp_crypto_esp_decrypt_node.index,
 					       ESP_DECRYPT_ERROR_REPLAY, 1);
 		  to_next[0] = bi0;
 		  to_next += 1;
@@ -310,7 +312,8 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 
 	      if (PREDICT_FALSE (!posted && !result.ok))
 		{
-		  vlib_node_increment_counter (vm, odp_crypto_esp_decrypt_node.index,
+		  vlib_node_increment_counter (vm,
+					       odp_crypto_esp_decrypt_node.index,
 					       ESP_DECRYPT_ERROR_INTEG_ERROR,
 					       1);
 		  goto trace;
@@ -355,7 +358,7 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 		{
 		  if (PREDICT_FALSE (transport_ip6))
 		    {
-                      memmove(oh6, ih6, sizeof(ip6_header_t));
+		      memmove (oh6, ih6, sizeof (ip6_header_t));
 
 		      next0 = ESP_DECRYPT_NEXT_IP6_INPUT;
 		      oh6->protocol = f0->next_header;
@@ -366,7 +369,7 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 		    }
 		  else
 		    {
-                      memmove(oh4, ih4, sizeof(ip4_header_t));
+		      memmove (oh4, ih4, sizeof (ip4_header_t));
 
 		      next0 = ESP_DECRYPT_NEXT_IP4_INPUT;
 		      oh4->ip_version_and_header_length = 0x45;
@@ -421,7 +424,7 @@ free_buffers_and_exit:
 
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (odp_crypto_esp_decrypt_node) = {
-  .function = esp_decrypt_node_fn,
+  .function = odp_crypto_esp_decrypt_node_fn,
   .name = "odp-crypto-esp-decrypt",
   .vector_size = sizeof (u32),
   .format_trace = format_esp_decrypt_trace,
@@ -439,11 +442,11 @@ VLIB_REGISTER_NODE (odp_crypto_esp_decrypt_node) = {
 };
 /* *INDENT-ON* */
 
-VLIB_NODE_FUNCTION_MULTIARCH (odp_crypto_esp_decrypt_node, esp_decrypt_node_fn)
-     static uword
-       esp_decrypt_post_node_fn (vlib_main_t * vm,
-				 vlib_node_runtime_t * node,
-				 vlib_frame_t * from_frame)
+VLIB_NODE_FUNCTION_MULTIARCH (odp_crypto_esp_decrypt_node,
+			      odp_crypto_esp_decrypt_node_fn)
+     static uword esp_decrypt_post_node_fn (vlib_main_t * vm,
+					    vlib_node_runtime_t * node,
+					    vlib_frame_t * from_frame)
 {
   u32 n_left_from, *from, *to_next = 0, next_index;
   from = vlib_frame_vector_args (from_frame);

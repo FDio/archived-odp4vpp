@@ -79,7 +79,7 @@ format_esp_encrypt_trace (u8 * s, va_list * args)
   CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
   esp_encrypt_trace_t *t = va_arg (*args, esp_encrypt_trace_t *);
 
-  s = format (s, "(ODP) esp: spi %u seq %u crypto %U integrity %U",
+  s = format (s, "odp-ipsec esp: spi %u seq %u crypto %U integrity %U",
 	      t->spi, t->seq,
 	      format_ipsec_crypto_alg, t->crypto_alg,
 	      format_ipsec_integ_alg, t->integ_alg);
@@ -93,13 +93,14 @@ format_esp_encrypt_post_trace (u8 * s, va_list * args)
   CLIB_UNUSED (vlib_main_t * vm) = va_arg (*args, vlib_main_t *);
   CLIB_UNUSED (vlib_node_t * node) = va_arg (*args, vlib_node_t *);
 
-  s = format (s, "POST ENCRYPT CRYPTO (ODP) esp");
+  s = format (s, "odp-ipsec post esp (encrypt)");
   return s;
 }
 
 static uword
-esp_encrypt_node_fn (vlib_main_t * vm,
-		     vlib_node_runtime_t * node, vlib_frame_t * from_frame)
+odp_ipsec_esp_encrypt_node_fn (vlib_main_t * vm,
+			       vlib_node_runtime_t * node,
+			       vlib_frame_t * from_frame)
 {
   u32 n_left_from, *from, *to_next = 0, next_index;
   from = vlib_frame_vector_args (from_frame);
@@ -328,7 +329,7 @@ free_buffers_and_exit:
 
 /* *INDENT-OFF* */
 VLIB_REGISTER_NODE (odp_ipsec_esp_encrypt_node) = {
-  .function = esp_encrypt_node_fn,
+  .function = odp_ipsec_esp_encrypt_node_fn,
   .name = "odp-ipsec-esp-encrypt",
   .vector_size = sizeof (u32),
   .format_trace = format_esp_encrypt_trace,
@@ -345,7 +346,7 @@ VLIB_REGISTER_NODE (odp_ipsec_esp_encrypt_node) = {
   },
 };
 
-VLIB_NODE_FUNCTION_MULTIARCH (odp_ipsec_esp_encrypt_node, esp_encrypt_node_fn)
+VLIB_NODE_FUNCTION_MULTIARCH (odp_ipsec_esp_encrypt_node, odp_ipsec_esp_encrypt_node_fn)
      static uword
        esp_encrypt_post_node_fn (vlib_main_t * vm,
 				 vlib_node_runtime_t * node,
