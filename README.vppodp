@@ -148,5 +148,47 @@ odp-0                             1         up       rx packets                 
                                                      ip4                            7
                                                      ip6                            4
 
+# ODP based ipsec nodes
+With the development of the odp4vpp project IPsec nodes have been added,
+making use of the ODP APIs. In hope that in the future it will enable
+accelerated IPsec tunnels.
 
+There are two pairs of new nodes, one making use of ODP crypto API, and
+one making use of the ODP IPsec API.
+
+In order to make use of the ODP crypto API version of IPsec nodes,
+put `enable-odp-crypto` in the odp section of the startup.conf file,
+while to use the IPsec API version, put `enable-odp-ipsec` in that file.
+The options should not be used simultaneously. By the time being these
+are global options and it is not possible to configure different
+IPsec nodes for different ports.
+
+odp {
+	enable-odp-crypto
+}
+
+or,
+
+odp {
+	enable-odp-ipsec
+}
+
+By default all the operations are done synchronously. In order
+to change that, `async` needs to be put in the odp section of the
+startup.conf file.
+
+odp {
+	enable-odp-crypto
+	async
+}
+
+IPsec API also provieds inline mode (for details see odp user guide),
+to make use of that, put `inline` in the odp section of the startup.conf
+file. That option _can_ be combined with the `async` option.
+
+odp {
+	enable-odp-ipsec
+	inline
+	async
+}
 
