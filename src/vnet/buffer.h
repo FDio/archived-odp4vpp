@@ -84,7 +84,8 @@ _(ipsec)					\
 _(map)						\
 _(map_t)					\
 _(ip_frag)					\
-_(tcp)
+_(tcp)						\
+_(post_crypto)
 
 /*
  * vnet stack buffer opaque array overlay structure.
@@ -284,6 +285,15 @@ typedef struct
       u16 data_len;		/**< data len */
       u8 flags;
     } tcp;
+
+    /* For ODP based ipsec nodes */
+    struct
+    {
+      u8 dst_mac[6];
+      u8 src_mac[6];
+      u8 ether_type[2];
+      u32 next_index;
+    } post_crypto;
 
     u32 unused[6];
   };
