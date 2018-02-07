@@ -107,7 +107,6 @@ odp_crypto_esp_encrypt_node_fn (vlib_main_t * vm,
   from = vlib_frame_vector_args (from_frame);
   n_left_from = from_frame->n_vectors;
   ipsec_main_t *im = &ipsec_main;
-  u32 *recycle = 0;
   odp_crypto_main_t *ocm = &odp_crypto_main;
   u32 thread_index = vlib_get_thread_index ();
   esp_main_t *em = &odp_esp_main;
@@ -445,9 +444,6 @@ odp_crypto_esp_encrypt_node_fn (vlib_main_t * vm,
 			       from_frame->n_vectors);
 
 free_buffers_and_exit:
-  if (recycle)
-    vlib_buffer_free (vm, recycle, vec_len (recycle));
-  vec_free (recycle);
   return from_frame->n_vectors;
 }
 

@@ -81,7 +81,7 @@ extern u32 tx_burst_size;
 extern u32 num_pkts_in_pool;
 extern odp_if_mode_t def_if_mode;
 extern u8 enable_odp_crypto;
-extern u8 ipsec_api;
+extern u8 enable_odp_ipsec;
 extern u8 is_async;
 extern u8 is_inline;
 

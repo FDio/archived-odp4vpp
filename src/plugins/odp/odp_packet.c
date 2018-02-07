@@ -24,7 +24,7 @@ odp_if_mode_t def_if_mode;
 odp_if_config_t *if_config;
 odp_crypto_main_t odp_crypto_main;
 u8 enable_odp_crypto;
-u8 ipsec_api;
+u8 enable_odp_ipsec;
 u8 is_async;
 u8 is_inline;
 
@@ -435,7 +435,7 @@ odp_config (vlib_main_t * vm, unformat_input_t * input)
 	}
       else if (unformat (input, "enable-odp-ipsec"))
 	{
-	  ipsec_api = 1;
+	  enable_odp_ipsec = 1;
 	}
       else if (unformat (input, "async"))
 	{
@@ -487,7 +487,7 @@ odp_process (vlib_main_t * vm, vlib_node_runtime_t * rt, vlib_frame_t * f)
   /* Initialization complete and worker threads can start */
   tm->worker_thread_release = 1;
 
-  ipsec_init (vlib_get_main (), ipsec_api);
+  ipsec_init (vlib_get_main ());
 
   return 0;
 }

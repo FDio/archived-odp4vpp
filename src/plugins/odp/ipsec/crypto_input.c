@@ -211,7 +211,7 @@ odp_crypto_input_node_fn (vlib_main_t * vm, vlib_node_runtime_t * node,
   odp_crypto_worker_main_t *cwm =
     vec_elt_at_index (ocm->workers, thread_index);
   u32 n_cops_dequeued = 0;
-  if (!ipsec_api) {
+  if (!enable_odp_ipsec) {
 	  n_cops_dequeued += odp_dequeue_cops(vm, node, frame, cwm->post_encrypt, ODP_CRYPTO_INPUT_NEXT_ENCRYPT_POST);
 	  n_cops_dequeued += odp_dequeue_cops(vm, node, frame, cwm->post_decrypt, ODP_CRYPTO_INPUT_NEXT_DECRYPT_POST);
   } else {

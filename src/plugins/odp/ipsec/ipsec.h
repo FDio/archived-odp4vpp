@@ -49,7 +49,7 @@ int create_sess (ipsec_sa_t * sa, sa_data_t * sess, int is_outbound);
 int create_odp_sa (ipsec_sa_t * sa, sa_data_t * sess, int flow_label,
 		   int is_outbound);
 
-clib_error_t *ipsec_init (vlib_main_t * vm, u8 ipsec_api);
+clib_error_t *ipsec_init (vlib_main_t * vm);
 
 #endif /* __IPSEC_H__ */
 

@@ -24,6 +24,9 @@
 #include <odp/ipsec/ipsec.h>
 #include <odp/ipsec/esp.h>
 
+#define CAPA_NOT_SUPP "mode is set in config while capabilities indicate it is not supported"
+
+
 static int
 add_del_sa_sess (u32 sa_index, u8 is_add)
 {
@@ -260,7 +263,7 @@ create_sess (ipsec_sa_t * sa, sa_data_t * sa_sess_data, int is_outbound)
 
     if (ret != size)
       {
-	clib_error_return (0, "failed to get random from ODP");
+	clib_error ("failed to get random from ODP");
 	return -1;
       }
   }
@@ -299,10 +302,13 @@ odp_ipsec_check_support (ipsec_sa_t * sa)
 }
 
 clib_error_t *
-ipsec_init (vlib_main_t * vm, u8 ipsec_api)
+ipsec_init (vlib_main_t * vm)
 {
-  if (!enable_odp_crypto && !ipsec_api)
+  if (!enable_odp_crypto && !enable_odp_ipsec)
     return 0;
+  if (enable_odp_crypto && enable_odp_ipsec)
+    clib_error
+      ("enable-odp-crypto and enable-odp-ipsec should not be used together");
   ipsec_main_t *im = &ipsec_main;
   odp_crypto_main_t *ocm = &odp_crypto_main;
   vlib_thread_main_t *tm = vlib_get_thread_main ();
@@ -328,12 +334,10 @@ ipsec_init (vlib_main_t * vm, u8 ipsec_api)
 
   ipsec_node = vlib_get_node_by_name (vm, (u8 *) "ipsec-output-ip4");
   ASSERT (ipsec_node);
-  if (ipsec_api)
-      crypto_node =
-	vlib_get_node_by_name (vm, (u8 *) "odp-ipsec-esp-encrypt");
+  if (enable_odp_ipsec)
+    crypto_node = vlib_get_node_by_name (vm, (u8 *) "odp-ipsec-esp-encrypt");
   else
-      crypto_node =
-	vlib_get_node_by_name (vm, (u8 *) "odp-crypto-esp-encrypt");
+    crypto_node = vlib_get_node_by_name (vm, (u8 *) "odp-crypto-esp-encrypt");
   ASSERT (crypto_node);
   im->esp_encrypt_node_index = crypto_node->index;
   im->esp_encrypt_next_index =
@@ -341,11 +345,10 @@ ipsec_init (vlib_main_t * vm, u8 ipsec_api)
 
   ipsec_node = vlib_get_node_by_name (vm, (u8 *) "ipsec-input-ip4");
   ASSERT (ipsec_node);
-  if (ipsec_api)
+  if (enable_odp_ipsec)
     crypto_node = vlib_get_node_by_name (vm, (u8 *) "odp-ipsec-esp-decrypt");
   else
-      crypto_node =
-	vlib_get_node_by_name (vm, (u8 *) "odp-crypto-esp-decrypt");
+    crypto_node = vlib_get_node_by_name (vm, (u8 *) "odp-crypto-esp-decrypt");
   ASSERT (crypto_node);
   im->esp_decrypt_node_index = crypto_node->index;
   im->esp_decrypt_next_index =
@@ -364,6 +367,41 @@ ipsec_init (vlib_main_t * vm, u8 ipsec_api)
     }
 
   esp_init ();
+
+  if (enable_odp_ipsec)
+    {
+      odp_ipsec_config_t ipsec_config;
+      odp_ipsec_capability_t ipsec_capa;
+
+      odp_ipsec_capability (&ipsec_capa);
+
+      odp_ipsec_config_init (&ipsec_config);
+
+      if (is_inline)
+	{
+	  if (ipsec_capa.op_mode_inline_in == ODP_SUPPORT_NO
+	      || ipsec_capa.op_mode_inline_out == ODP_SUPPORT_NO)
+	    clib_error ("Inline " CAPA_NOT_SUPP
+			" (need it at both TX and RX)");
+	  ipsec_config.inbound_mode = ODP_IPSEC_OP_MODE_INLINE;
+	  ipsec_config.outbound_mode = ODP_IPSEC_OP_MODE_INLINE;
+	}
+      else if (is_async)
+	{
+	  if (ipsec_capa.op_mode_async == ODP_SUPPORT_NO)
+	    clib_error ("Async " CAPA_NOT_SUPP);
+	  ipsec_config.inbound_mode = ODP_IPSEC_OP_MODE_ASYNC;
+	  ipsec_config.outbound_mode = ODP_IPSEC_OP_MODE_ASYNC;
+	}
+      else
+	{
+	  if (ipsec_capa.op_mode_sync == ODP_SUPPORT_NO)
+	    clib_error ("Sync " CAPA_NOT_SUPP);
+	  ipsec_config.inbound_mode = ODP_IPSEC_OP_MODE_SYNC;
+	  ipsec_config.outbound_mode = ODP_IPSEC_OP_MODE_SYNC;
+	}
+      odp_ipsec_config (&ipsec_config);
+    }
 
   int i;
   for (i = 1; i < tm->n_vlib_mains; i++)
@@ -385,29 +423,6 @@ ipsec_init (vlib_main_t * vm, u8 ipsec_api)
     {
       ocm->workers[0].post_encrypt = ocm->workers[1].post_encrypt;
       ocm->workers[0].post_decrypt = ocm->workers[1].post_decrypt;
-    }
-
-  if (ipsec_api)
-    {
-      odp_ipsec_config_t ipsec_config;
-      odp_ipsec_config_init (&ipsec_config);
-
-      if (is_inline)
-	{
-	  ipsec_config.inbound_mode = ODP_IPSEC_OP_MODE_INLINE;
-	  ipsec_config.outbound_mode = ODP_IPSEC_OP_MODE_INLINE;
-	}
-      else if (is_async)
-	{
-	  ipsec_config.inbound_mode = ODP_IPSEC_OP_MODE_ASYNC;
-	  ipsec_config.outbound_mode = ODP_IPSEC_OP_MODE_ASYNC;
-	}
-      else
-	{
-	  ipsec_config.inbound_mode = ODP_IPSEC_OP_MODE_SYNC;
-	  ipsec_config.outbound_mode = ODP_IPSEC_OP_MODE_SYNC;
-	}
-      odp_ipsec_config (&ipsec_config);
     }
 
   return 0;
