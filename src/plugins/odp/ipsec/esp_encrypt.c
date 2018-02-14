@@ -131,7 +131,6 @@ esp_encrypt_node_fn (vlib_main_t * vm,
   while (n_left_from > 0)
     {
       u32 n_left_to_next;
-      u32 buffers_passed = 0;
 
       vlib_get_next_frame (vm, node, next_index, to_next, n_left_to_next);
 
@@ -379,7 +378,7 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	      b0->current_length +=
 		em->esp_integ_algs[sa0->integ_alg].trunc_size;
 
-	      vnet_buffer (b0)->post_crypto.next_index = next0;
+	      vnet_buffer (b0)->post_crypto.next_index = (u8) next0;
 
 	      int ret =
 		odp_crypto_operation (&crypto_op_params, &posted, &result);
@@ -430,12 +429,14 @@ esp_encrypt_node_fn (vlib_main_t * vm,
 	      vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
 					       to_next, n_left_to_next, bi0,
 					       next0);
-	      buffers_passed += 1;
 	    }
-
+	  else
+	    {
+	      to_next -= 1;
+	      n_left_to_next += 1;
+	    }
 	}
-      if (buffers_passed > 0)
-	vlib_put_next_frame (vm, node, next_index, n_left_to_next);
+      vlib_put_next_frame (vm, node, next_index, n_left_to_next);
     }
   vlib_node_increment_counter (vm, odp_crypto_esp_encrypt_node.index,
 			       ESP_ENCRYPT_ERROR_RX_PKTS,
