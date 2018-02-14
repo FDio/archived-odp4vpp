@@ -286,13 +286,14 @@ typedef struct
       u8 flags;
     } tcp;
 
-    /* For ODP based ipsec nodes */
+    /* For ODP based ipsec nodes (careful, collides with ipsec field of this
+       union, might be a problem when implementing GRE protocol) */
     struct
     {
       u8 dst_mac[6];
       u8 src_mac[6];
-      u8 ether_type[2];
-      u32 next_index;
+      u16 ether_type;
+      u8 next_index;
     } post_crypto;
 
     u32 unused[6];
