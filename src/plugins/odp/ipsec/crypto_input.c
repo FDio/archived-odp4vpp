@@ -30,7 +30,8 @@ typedef enum
 
 #define foreach_crypto_input_error \
 _(DEQUE_COP, "Dequed crypto operations") \
-_(CRYPTO_ERROR, "Error while performing crypto")
+_(CRYPTO_ERROR, "Error while performing crypto") \
+_(IPSEC_ERROR, "Erro while performing ipsec processing")
 
 typedef enum
 {
@@ -163,10 +164,25 @@ odp_dequeue_ipsec_ops (vlib_main_t * vm, vlib_node_runtime_t * node,
 	  odp_event_t event = events[index++];
 
 	  odp_packet_t pkt;
+	  odp_ipsec_packet_result_t result;
 	  vlib_buffer_t *b0;
 	  u32 bi0;
 
+	  u32 next0 = next_index;
+
+	  /* We are not interested in other event types */
+	  ASSERT (ODP_EVENT_PACKET == odp_event_type (event));
+
 	  pkt = odp_packet_from_event (event);
+
+	  odp_ipsec_result (&result, pkt);
+
+	  if (PREDICT_FALSE (result.status.all != ODP_IPSEC_OK))
+	    {
+	      vlib_node_increment_counter (vm, odp_crypto_input_node.index,
+					   CRYPTO_INPUT_ERROR_IPSEC_ERROR, 1);
+	      next0 = ODP_CRYPTO_INPUT_NEXT_DROP;
+	    }
 
 	  b0 = vlib_buffer_from_odp_packet (pkt);
 	  bi0 = vlib_get_buffer_index (vm, b0);
@@ -191,12 +207,12 @@ odp_dequeue_ipsec_ops (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    {
 	      odp_packet_crypto_trace_t *tr;
 	      tr = vlib_add_trace (vm, node, b0, sizeof (*tr));
-	      tr->next_index = next_index;
+	      tr->next_index = next0;
 	    }
 
 	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
 					   to_next, n_left_to_next, bi0,
-					   next_node_index);
+					   next0);
 	}
       vlib_put_next_frame (vm, node, next_index, n_left_to_next);
     }

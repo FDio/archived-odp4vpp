@@ -42,7 +42,7 @@ typedef enum
 #define foreach_esp_encrypt_error                   \
  _(RX_PKTS, "ESP pkts received")                    \
  _(NO_BUFFER, "No buffer (packet dropped)")         \
- _(DECRYPTION_FAILED, "ESP encryption failed")      \
+ _(ENCRYPTION_FAILED, "ESP encryption failed")      \
  _(SEQ_CYCLED, "sequence number cycled")
 
 
@@ -206,6 +206,7 @@ odp_ipsec_esp_encrypt_node_fn (vlib_main_t * vm,
 
 	  if (PREDICT_TRUE (sa0->crypto_alg != IPSEC_CRYPTO_ALG_NONE))
 	    {
+	      odp_ipsec_packet_result_t result;
 	      odp_packet_t pkt = odp_packet_from_vlib_buffer (i_b0);
 	      odp_packet_t out_pkt;
 	      odp_ipsec_out_inline_param_t ipsec_inline_params;
@@ -248,7 +249,7 @@ odp_ipsec_esp_encrypt_node_fn (vlib_main_t * vm,
 		     vnet_buffer (i_b0)->sw_if_index[VLIB_TX], 1,
 		     i_b0->current_length);
 		}
-              else if (is_async)
+	      else if (is_async)
 		ret = odp_ipsec_out_enq (&pkt, 1, &oiopt);
 	      else
 		ret = odp_ipsec_out (&pkt, 1, &out_pkt, &processed, &oiopt);
@@ -256,6 +257,7 @@ odp_ipsec_esp_encrypt_node_fn (vlib_main_t * vm,
 	      if (ret < 1)
 		{
 		  clib_error ("(out) IPsec packet not processed\n");
+		  next0 = ESP_ENCRYPT_NEXT_DROP;
 		  goto trace;
 		}
 
@@ -264,8 +266,18 @@ odp_ipsec_esp_encrypt_node_fn (vlib_main_t * vm,
 		  && !(is_inline
 		       && next0 == ESP_ENCRYPT_NEXT_INTERFACE_OUTPUT))
 		{
-		  o_b0 = vlib_buffer_from_odp_packet (out_pkt);
+		  odp_ipsec_result (&result, out_pkt);
+		  if (PREDICT_FALSE (result.status.all != ODP_IPSEC_OK))
+		    {
+		      vlib_node_increment_counter (vm,
+						   odp_ipsec_esp_encrypt_node.index,
+						   ESP_ENCRYPT_ERROR_ENCRYPTION_FAILED,
+						   from_frame->n_vectors);
+		      next0 = ESP_ENCRYPT_NEXT_DROP;
+		      goto trace;
+		    }
 
+		  o_b0 = vlib_buffer_from_odp_packet (out_pkt);
 
 		  o_b0->current_data =
 		    (i16) ((intptr_t) odp_packet_data (out_pkt) -
@@ -294,16 +306,8 @@ odp_ipsec_esp_encrypt_node_fn (vlib_main_t * vm,
 		      o_b0->current_data -= sizeof (ethernet_header_t);
 		      o_b0->current_length += sizeof (ethernet_header_t);
 		    }
+		}
 
-		  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
-						   to_next, n_left_to_next,
-						   bi0, next0);
-		}
-	      else
-		{
-		  to_next -= 1;
-		  n_left_to_next += 1;
-		}
 	    }
 	trace:
 	  if (PREDICT_FALSE (i_b0->flags & VLIB_BUFFER_IS_TRACED))
@@ -314,6 +318,19 @@ odp_ipsec_esp_encrypt_node_fn (vlib_main_t * vm,
 	      tr->seq = sa0->seq - 1;
 	      tr->crypto_alg = sa0->crypto_alg;
 	      tr->integ_alg = sa0->integ_alg;
+	    }
+
+	  if (!is_async
+	      && !(is_inline && next0 == ESP_ENCRYPT_NEXT_INTERFACE_OUTPUT))
+	    {
+	      vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
+					       to_next, n_left_to_next,
+					       bi0, next0);
+	    }
+	  else
+	    {
+	      to_next -= 1;
+	      n_left_to_next += 1;
 	    }
 	}
       vlib_put_next_frame (vm, node, next_index, n_left_to_next);
