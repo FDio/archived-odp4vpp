@@ -95,7 +95,7 @@ create_sess (ipsec_sa_t * sa, sa_data_t * sa_sess_data, int is_outbound)
 
   const int max_auth_capa_amount = 8;
   odp_crypto_auth_capability_t capa[max_auth_capa_amount];
-  int actual_capa_amount; 
+  int actual_capa_amount;
 
   crypto_params.auth_cipher_text = 1;
 
@@ -202,7 +202,10 @@ create_sess (ipsec_sa_t * sa, sa_data_t * sa_sess_data, int is_outbound)
 clib_error_t *
 odp_ipsec_check_support (ipsec_sa_t * sa)
 {
-  // TODO maybe we should check what crypto is available or something?
+  /* TODO check if the parameters present in the security association
+     are supported by the odp_crypto/odp_ipsec, currently that that
+     is partially checked during the creation of the crypto session,
+     the odp_ipsec does not check it at all. */
   return 0;
 }
 
