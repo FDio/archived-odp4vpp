@@ -28,8 +28,7 @@
 #define foreach_esp_decrypt_next                \
 _(DROP, "error-drop")                           \
 _(IP4_INPUT, "ip4-input")                       \
-_(IP6_INPUT, "ip6-input")                       \
-_(IPSEC_GRE_INPUT, "ipsec-gre-input")
+_(IP6_INPUT, "ip6-input")
 
 #define _(v, s) ESP_DECRYPT_NEXT_##v,
 typedef enum
@@ -403,12 +402,6 @@ esp_decrypt_node_fn (vlib_main_t * vm,
 		      oh4->checksum = ip4_header_checksum (oh4);
 		    }
 		}
-
-	      /* for IPSec-GRE tunnel next node is ipsec-gre-input */
-	      if (PREDICT_FALSE
-		  ((vnet_buffer (b0)->ipsec.flags) &
-		   IPSEC_FLAG_IPSEC_GRE_TUNNEL))
-		next0 = ESP_DECRYPT_NEXT_IPSEC_GRE_INPUT;
 
 	      vnet_buffer (b0)->sw_if_index[VLIB_TX] = (u32) ~ 0;
 
