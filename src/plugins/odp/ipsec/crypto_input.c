@@ -21,7 +21,8 @@ typedef enum
 } odp_crypto_input_next_t;
 
 #define foreach_crypto_input_error \
-_(DEQUE_COP, "Dequed crypto operations")
+_(DEQUE_COP, "Dequed crypto operations") \
+_(CRYPTO_ERROR, "Error while performing crypto")
 
 typedef enum
 {
@@ -77,16 +78,28 @@ odp_dequeue_cops (vlib_main_t * vm, vlib_node_runtime_t * node,
 	{
 	  odp_event_t event = events[index++];
 
-	  ASSERT (ODP_EVENT_CRYPTO_COMPL == odp_event_type (event));
-
 	  odp_crypto_compl_t compl;
 	  odp_crypto_op_result_t result;
 	  odp_packet_t pkt;
 	  vlib_buffer_t *b0;
 	  u32 bi0;
 
+	  u32 next0 = next_index;
+
+	  /* We are not interested in other event types */
+	  ASSERT (ODP_EVENT_PACKET == odp_event_type (event));
+
 	  compl = odp_crypto_compl_from_event (event);
 	  odp_crypto_compl_result (compl, &result);
+
+	  if (PREDICT_FALSE (!result.ok))
+	    {
+	      vlib_node_increment_counter (vm, odp_crypto_input_node.index,
+					   CRYPTO_INPUT_ERROR_CRYPTO_ERROR,
+					   1);
+	      next0 = ODP_CRYPTO_INPUT_NEXT_DROP;
+	    }
+
 	  pkt = result.pkt;
 
 	  b0 = vlib_buffer_from_odp_packet (pkt);
@@ -102,12 +115,12 @@ odp_dequeue_cops (vlib_main_t * vm, vlib_node_runtime_t * node,
 	    {
 	      odp_packet_crypto_trace_t *tr;
 	      tr = vlib_add_trace (vm, node, b0, sizeof (*tr));
-	      tr->next_index = next_index;
+	      tr->next_index = next0;
 	    }
 
 	  vlib_validate_buffer_enqueue_x1 (vm, node, next_index,
 					   to_next, n_left_to_next, bi0,
-					   next_node_index);
+					   next0);
 	}
       vlib_put_next_frame (vm, node, next_index, n_left_to_next);
     }
