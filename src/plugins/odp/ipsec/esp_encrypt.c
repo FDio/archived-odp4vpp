@@ -345,8 +345,6 @@ odp_crypto_esp_encrypt_node_fn (vlib_main_t * vm,
 
 	      crypto_op_params.session = sa_sess_data->sess;
 	      crypto_op_params.ctx = NULL;
-	      crypto_op_params.aad.ptr = NULL;
-	      crypto_op_params.aad.length = 0;
 	      crypto_op_params.pkt = pkt;
 	      crypto_op_params.out_pkt = pkt;
 

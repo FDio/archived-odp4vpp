@@ -203,8 +203,6 @@ odp_crypto_esp_decrypt_node_fn (vlib_main_t * vm,
 
 	  crypto_op_params.session = sa_sess_data->sess;
 	  crypto_op_params.ctx = NULL;
-	  crypto_op_params.aad.ptr = NULL;
-	  crypto_op_params.aad.length = 0;
 	  crypto_op_params.pkt = odp_packet_from_vlib_buffer (b0);
 	  crypto_op_params.out_pkt = crypto_op_params.pkt;
 	  crypto_op_params.override_iv_ptr = sa_sess_data->iv_data;
