@@ -512,8 +512,12 @@ odp_packet_init (vlib_main_t * vm)
   odp_pool_capability_t capa;
   odp_shm_t shm;
   odp_instance_t instance;
+  odp_init_t init_params;
 
-  if (odp_init_global (&instance, NULL, NULL))
+  odp_init_param_init (&init_params);
+  init_params.not_used.feat.timer = 0;
+  init_params.not_used.feat.schedule = 0;
+  if (odp_init_global (&instance, &init_params, NULL))
     clib_warning ("Error: ODP global init failed");
 
   if (odp_init_local (instance, ODP_THREAD_CONTROL) != 0)
