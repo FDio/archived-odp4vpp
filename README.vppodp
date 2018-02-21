@@ -3,7 +3,9 @@
 
 #Introduction:
 --------------
-odp4vpp project aims to provide VPP with an additional vnet device based on OpenDataPlane (ODP is similar yet different from DPDK), with provisions for hardwareacceleration of packet paths. It envisions three deployment scenarios:
+odp4vpp project aims to provide VPP with an additional vnet device based on OpenDataPlane
+(ODP is similar yet different from DPDK), with provisions for hardware acceleration
+of packet paths. It envisions three deployment scenarios:
 
 -Server + NICs
 -Systems on a Chip
@@ -11,35 +13,106 @@ odp4vpp project aims to provide VPP with an additional vnet device based on Open
 
 #Build Procedure:
 ----------------
-The source code add support to build VPP with odp-dpdk implementation.
+The source code add support to build VPP with either odp-dpdk or modified odp-linux.
 Generic odp-linux is not supported as it keeps user area outside packet buffer.
 VPP requires the user area (used to store vlib_buffer_t) to be located just before packet data.
 
-Build vpp with odp-dpdk:
+
+1)Build vpp with odp-linux:
+---------------------------
+Build the odp linux package by compiling odp from odp git repository:
+
+git clone https://git.linaro.org/lng/odp.git
+
+This release was tested with v1.17.0.0 version and with three additional patches.
+Patches can be found in odp/odp-linux directory:
+0001-linux-generic-pool-Return-address-range-in-pool-info.patch
+0002-linux-generic-Place-userdata-before-packet-data.patch
+
+If ODP IPsec will be tested in inline mode, using dpdk/socket pktio respectively
+0003-inline-HACK-in-dpdk-pktio.patch
+0004-inline-HACK-in-socket-pktio.patch
+
+
+Follow the README steps for complete build.
+
+- default pktio
+cd odp
+./bootstrap
+./configure --prefix=<odp-install-path>
+make install
+
+- dpdk pktio
+use scripts/build-pktio-dpdk to compile odp-linux with dpdk pktio
+
+
+Build vpp:
+Follow the README steps for complete build.
+
+Set the environment variables with ODP config:
+export PLATFORM=odp
+export ODP_INST_PATH=<odp-install-path>
+export ODP_PLATFORM_PARAMS="-m 400"
+
+- default pktio
+Adjust odp_odp_libs in build-data/platforms/odp.mk:
+odp_odp_libs = -lodp-linux -lodphelper -lpcap
+
+- dpdk pktio 
+export LIBRARY_PATH=<dpdk-install-path>/lib/
+Adjust odp_odp_libs in build-data/platforms/odp.mk:
+odp_odp_libs = -lodp-linux -ldpdk -lodphelper -lpcap
+
+cd vpp
+make install-dep
+make build
+make run
+
+
+2)Build vpp with odp-dpdk:
 --------------------------
 Build the odp-dpdk package by compiling odp-dpdk from odp-dpdk git repository:
 
 git clone https://git.linaro.org/lng/odp-dpdk.git
 
-Follow the README.DPDK steps for complete build with dpdk.
+This release was tested on master branch with commit e78e28ea32d5 with three
+additional patches.  Patches can be found in odp/odp-dpdk directory:
+0001-linux-dpdk-pool-Return-address-range-in-pool-info.patch
+
+When using odp_crypto based IPsec the fixes below are necessary
+0002-linux-dpdk-crypto-Change-queue-amount.patch
+0003-Changed-the-digest-size-of-SHA256_HMAC.patch
+
+If ODP IPsec will be tested in inline mode, this is also needed
+0004-HACK-enable-inline-for-odp-dpdk.patch
+
+
+Follow the odp-dpdk/README.DPDK steps for complete build with dpdk.
+
+git clone --single-branch --branch=v17.08 http://dpdk.org/git/dpdk
+cd dpdk
+make config T=x86_64-native-linuxapp-gcc O=x86_64-native-linuxapp-gcc
+sed -ri 's,(CONFIG_RTE_LIBRTE_PMD_OPENSSL=).*,\1y,' x86_64-native-linuxapp-gcc/.config
+sed -ri 's,(CONFIG_RTE_LIBRTE_PMD_PCAP=).*,\1y,' x86_64-native-linuxapp-gcc/.config
+make O=x86_64-native-linuxapp-gcc EXTRA_CFLAGS="-fPIC"
 
 cd odp-dpdk
 ./bootstrap
-./configure --prefix= <odp-dpdk-install-path> --with-sdk-install-path=<dpdk-dir>/x86_64-native-linuxapp-gcc
+./configure --prefix=<odp-dpdk-install-path> --with-dpdk-path=<dpdk-dir>/x86_64-native-linuxapp-gcc
 make install
 
 Set the environment variables with ODP config:
 
 export PLATFORM=odp
 export ODP_INST_PATH=<odp-dpdk-install-path>
-export ODP_PLATFORM_PARAMS="-m 400" # at least size of memory to allocate need to be specified
+export LIBRARY_PATH=<dpdk-dir>/x86_64-native-linuxapp-gcc/lib/
+export ODP_PLATFORM_PARAMS="-m 400 --vdev crypto_openssl"
 
-Note : Also check and copy dpdk/odp-dpdk libraries to default /usr/lib path for linking with vpp.
 
 Build vpp:
 Follow the README steps for complete build.
 
-cd vpp
+cd odp4vpp
 make install-dep
 make build
 make run
@@ -148,7 +221,22 @@ odp-0                             1         up       rx packets                 
                                                      ip4                            7
                                                      ip6                            4
 
+
+# VPP startup configuration
+---------------------------
+Default configuration of ODP plugin, IPSec nodes and automatic creation of
+interfaces can be specified in startup.conf file.
+More details are in template: src/vpp/conf/startup.conf
+
+To use customized startup configuration:
+copy default config from src/vpp/conf/startup.conf
+add 'interactive' to 'unix' section and remove 'api-segment'
+uncomment and adjust 'odp' section
+export STARTUP_CONF=<path-to-startup.conf>
+
+
 # ODP based ipsec nodes
+-----------------------
 With the development of the odp4vpp project IPsec nodes have been added,
 making use of the ODP APIs. In hope that in the future it will enable
 accelerated IPsec tunnels.
@@ -192,3 +280,11 @@ odp {
 	async
 }
 
+The IPsec inline mode is only supported on the loopback pktio in odp-linux,
+though it has not been tested with this pktio. It has been tested with modified
+versions of dpdk/socket pktio. The last two patches for odp-linux enable
+testing it with dpdk and socket based pktio on odp-linux. The last of the
+odp-dpdk patches enable inline mode in odp-dpdk. Those patches are not needed
+if no IPsec is planed to be ran in inline mode. Also these changes should soon
+be integrated in the odp and odp-dpdk repositories, and then these patches will
+no longer be needed.

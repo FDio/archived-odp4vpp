@@ -1,0 +1,153 @@
+From 89ea1eb01acb424afd1ec340b6e0cea80904d0aa Mon Sep 17 00:00:00 2001
+From: Michal Mazur <mkm@semihalf.com>
+Date: Wed, 31 Jan 2018 16:32:54 +0100
+Subject: [PATCH 2/4] linux-generic: Place userdata before packet data
+
+Signed-off-by: Michal Mazur <mkm@semihalf.com>
+---
+ .../linux-generic/include/odp_packet_internal.h    |  4 +--
+ platform/linux-generic/include/odp_pool_internal.h |  3 --
+ platform/linux-generic/odp_pool.c                  | 37 ++++------------------
+ 3 files changed, 9 insertions(+), 35 deletions(-)
+
+diff --git a/platform/linux-generic/include/odp_packet_internal.h b/platform/linux-generic/include/odp_packet_internal.h
+index 62888f8..dc827ab 100644
+--- a/platform/linux-generic/include/odp_packet_internal.h
++++ b/platform/linux-generic/include/odp_packet_internal.h
+@@ -161,8 +161,8 @@ typedef struct {
+ 	/* Context for IPsec */
+ 	odp_ipsec_packet_result_t ipsec_ctx;
+ 
+-	/* Packet data storage */
+-	uint8_t data[0];
++	/* Packet data or user area */
++	uint8_t data[0] ODP_ALIGNED_CACHE;
+ } odp_packet_hdr_t;
+ 
+ /**
+diff --git a/platform/linux-generic/include/odp_pool_internal.h b/platform/linux-generic/include/odp_pool_internal.h
+index 61ec5cc..f1892f0 100644
+--- a/platform/linux-generic/include/odp_pool_internal.h
++++ b/platform/linux-generic/include/odp_pool_internal.h
+@@ -54,7 +54,6 @@ typedef struct pool_t {
+ 	uint32_t         pool_idx;
+ 	uint32_t         ring_mask;
+ 	odp_shm_t        shm;
+-	odp_shm_t        uarea_shm;
+ 	int              reserved;
+ 	uint32_t         num;
+ 	uint32_t         align;
+@@ -66,9 +65,7 @@ typedef struct pool_t {
+ 	uint32_t         uarea_size;
+ 	uint32_t         block_size;
+ 	uint32_t         shm_size;
+-	uint32_t         uarea_shm_size;
+ 	uint8_t         *base_addr;
+-	uint8_t         *uarea_base_addr;
+ 
+ 	/* Used by DPDK zero-copy pktio */
+ 	uint8_t		mem_from_huge_pages;
+diff --git a/platform/linux-generic/odp_pool.c b/platform/linux-generic/odp_pool.c
+index a33dd45..2d50e14 100644
+--- a/platform/linux-generic/odp_pool.c
++++ b/platform/linux-generic/odp_pool.c
+@@ -278,14 +278,16 @@ static void init_buffers(pool_t *pool)
+ 				continue;
+ 			}
+ 		}
+-		if (pool->uarea_size)
+-			uarea = &pool->uarea_base_addr[(i - skipped_blocks) *
+-						       pool->uarea_size];
+-		data = buf_hdr->data;
+ 
++		data = buf_hdr->data;
+ 		if (type == ODP_POOL_PACKET)
+ 			data = pkt_hdr->data;
+ 
++		if (pool->uarea_size) {
++			uarea = data;
++			data = (uint8_t *)((uintptr_t)data + pool->uarea_size);
++		}
++
+ 		offset = pool->headroom;
+ 
+ 		/* move to correct align */
+@@ -451,7 +453,7 @@ static odp_pool_t pool_create(const char *name, odp_pool_param_t *params,
+ 	hdr_size = ROUNDUP_CACHE_LINE(hdr_size);
+ 
+ 	block_size = ROUNDUP_CACHE_LINE(hdr_size + align + headroom + seg_len +
+-					tailroom);
++					tailroom + uarea_size);
+ 
+ 	/* Allocate extra memory for skipping packet buffers which cross huge
+ 	 * page boundaries. */
+@@ -478,7 +480,6 @@ static odp_pool_t pool_create(const char *name, odp_pool_param_t *params,
+ 	pool->block_size     = block_size;
+ 	pool->uarea_size     = uarea_size;
+ 	pool->shm_size       = (num + num_extra) * block_size;
+-	pool->uarea_shm_size = num * uarea_size;
+ 	pool->ext_desc       = NULL;
+ 	pool->ext_destroy    = NULL;
+ 
+@@ -496,20 +497,6 @@ static odp_pool_t pool_create(const char *name, odp_pool_param_t *params,
+ 
+ 	pool->base_addr = odp_shm_addr(pool->shm);
+ 
+-	pool->uarea_shm = ODP_SHM_INVALID;
+-	if (uarea_size) {
+-		shm = odp_shm_reserve(uarea_name, pool->uarea_shm_size,
+-				      ODP_PAGE_SIZE, shmflags);
+-
+-		pool->uarea_shm = shm;
+-
+-		if (shm == ODP_SHM_INVALID) {
+-			ODP_ERR("Shm reserve failed (uarea)");
+-			goto error;
+-		}
+-
+-		pool->uarea_base_addr = odp_shm_addr(pool->uarea_shm);
+-	}
+ 
+ 	ring_init(&pool->ring->hdr);
+ 	init_buffers(pool);
+@@ -520,9 +507,6 @@ error:
+ 	if (pool->shm != ODP_SHM_INVALID)
+ 		odp_shm_free(pool->shm);
+ 
+-	if (pool->uarea_shm != ODP_SHM_INVALID)
+-		odp_shm_free(pool->uarea_shm);
+-
+ 	LOCK(&pool->lock);
+ 	pool->reserved = 0;
+ 	UNLOCK(&pool->lock);
+@@ -638,9 +622,6 @@ int odp_pool_destroy(odp_pool_t pool_hdl)
+ 
+ 	odp_shm_free(pool->shm);
+ 
+-	if (pool->uarea_shm != ODP_SHM_INVALID)
+-		odp_shm_free(pool->uarea_shm);
+-
+ 	pool->reserved = 0;
+ 	odp_shm_free(pool->ring_shm);
+ 	pool->ring = NULL;
+@@ -948,8 +929,6 @@ void odp_pool_print(odp_pool_t pool_hdl)
+ 		    "unknown")));
+ 	ODP_PRINT("  pool shm        %" PRIu64 "\n",
+ 		  odp_shm_to_u64(pool->shm));
+-	ODP_PRINT("  user area shm   %" PRIu64 "\n",
+-		  odp_shm_to_u64(pool->uarea_shm));
+ 	ODP_PRINT("  num             %u\n", pool->num);
+ 	ODP_PRINT("  align           %u\n", pool->align);
+ 	ODP_PRINT("  headroom        %u\n", pool->headroom);
+@@ -960,8 +939,6 @@ void odp_pool_print(odp_pool_t pool_hdl)
+ 	ODP_PRINT("  uarea size      %u\n", pool->uarea_size);
+ 	ODP_PRINT("  shm size        %u\n", pool->shm_size);
+ 	ODP_PRINT("  base addr       %p\n", pool->base_addr);
+-	ODP_PRINT("  uarea shm size  %u\n", pool->uarea_shm_size);
+-	ODP_PRINT("  uarea base addr %p\n", pool->uarea_base_addr);
+ 	ODP_PRINT("\n");
+ }
+ 
+-- 
+2.7.4
+

@@ -1,0 +1,43 @@
+From 255ade1eb70498168b58551fd2fb78634029fdd1 Mon Sep 17 00:00:00 2001
+From: Szymon Sliwa <szs@semihalf.com>
+Date: Tue, 28 Nov 2017 17:51:55 +0100
+Subject: [PATCH 2/4] linux-dpdk: crypto: Change queue amount
+
+Changed the amount of queue pairs created for
+cryptodevs to the maximal possible amount,
+this is a workaround, but enables testing of
+the odp4vpp project.
+
+ODP-DPDK maps cryptodev queue pairs to cores
+by the odp_cpu_id (which is thread id in my
+case). So if ODP-DPDK is started with cpu
+mask 0x1 it should be enough to have 1
+pair of cryptodev queues. Unfortunatelly
+that is not the case - later additional
+threads are spawned using
+odph_odpthreads_create, and ODP-DPDK
+crashes spectacularily trying to access
+the abscent queues. (this commit only
+proposes a workaround)
+---
+ platform/linux-dpdk/odp_crypto.c | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/platform/linux-dpdk/odp_crypto.c b/platform/linux-dpdk/odp_crypto.c
+index 5ed84bc..1103cdd 100644
+--- a/platform/linux-dpdk/odp_crypto.c
++++ b/platform/linux-dpdk/odp_crypto.c
+@@ -259,9 +259,7 @@ int odp_crypto_init_global(void)
+ 		struct rte_cryptodev_info dev_info;
+ 
+ 		rte_cryptodev_info_get(cdev_id, &dev_info);
+-		nb_queue_pairs = odp_cpu_count();
+-		if (nb_queue_pairs > dev_info.max_nb_queue_pairs)
+-			nb_queue_pairs = dev_info.max_nb_queue_pairs;
++		nb_queue_pairs = dev_info.max_nb_queue_pairs;
+ 
+ 		struct rte_cryptodev_qp_conf qp_conf;
+ 
+-- 
+2.7.4
+

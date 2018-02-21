@@ -1,0 +1,35 @@
+From 39c04a0428bbe1fc9bed14c4d8526a94050b8674 Mon Sep 17 00:00:00 2001
+From: Szymon Sliwa <szs@semihalf.com>
+Date: Wed, 6 Dec 2017 11:35:53 +0100
+Subject: [PATCH 3/4] Changed the digest size of SHA256_HMAC
+
+The change was done to match OpenSSL PMD (from DPDK),
+compatibility list.
+---
+ platform/linux-dpdk/odp_crypto.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/platform/linux-dpdk/odp_crypto.c b/platform/linux-dpdk/odp_crypto.c
+index 1103cdd..9f89f29 100644
+--- a/platform/linux-dpdk/odp_crypto.c
++++ b/platform/linux-dpdk/odp_crypto.c
+@@ -136,12 +136,15 @@ static int auth_alg_odp_to_rte(odp_auth_alg_t auth_alg,
+ 		auth_xform->auth.digest_length = 12;
+ 		break;
+ 	case ODP_AUTH_ALG_SHA256_HMAC:
++		auth_xform->auth.algo = RTE_CRYPTO_AUTH_SHA256_HMAC;
++		auth_xform->auth.digest_length = 32;
++		break;
+ #if ODP_DEPRECATED_API
+ 	case ODP_AUTH_ALG_SHA256_128:
+-#endif
+ 		auth_xform->auth.algo = RTE_CRYPTO_AUTH_SHA256_HMAC;
+ 		auth_xform->auth.digest_length = 16;
+ 		break;
++#endif
+ 	case ODP_AUTH_ALG_SHA1_HMAC:
+ 		auth_xform->auth.algo = RTE_CRYPTO_AUTH_SHA1_HMAC;
+ 		auth_xform->auth.digest_length = 20;
+-- 
+2.7.4
+
